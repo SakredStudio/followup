@@ -1,6 +1,6 @@
-// FollowUp Buddy — Main Application Controller (P0–P2: Onboarding, Today, AddLeadSheet, Pro gate)
+// FollowUp Buddy — Main Application Controller (P0–P3: Onboarding, Today, AddLeadSheet, LeadDetail, Channels)
 import { registerTranslations, t } from './lib/i18n.js';
-import { initials, avatarColor, relTime, formatHeaderDate } from './lib/format.js';
+import { initials, avatarColor, relTime, shortDate, formatHeaderDate, formatINR } from './lib/format.js';
 import {
   loadState,
   saveState,
@@ -8,22 +8,37 @@ import {
   getActiveLeadCount,
   canAddActiveLead,
   canAddTag,
-  addTag,
   createLead,
+  updateLeadStatus,
+  rescheduleFollowUp,
+  logLeadEvent,
+  archiveLead,
+  getLeadEvents,
   seedSampleLeads,
   FREE_ACTIVE_LEAD_LIMIT
 } from './lib/store.js';
 import { categorize, computeCatchUpBanner, startOfDay } from './lib/categorize.js';
+import {
+  buildFollowUpMessage,
+  buildWhatsAppUrl,
+  buildInstagramWebUrl,
+  buildLeadSummaryText
+} from './lib/channels.js';
 
 let appState = null;
 let snackTimer = null;
 let uiState = {
   tab: 'today', // 'today' | 'all' | 'settings'
   screen: 'today', // 'onboarding' | 'today' | 'detail' | 'all' | 'settings'
+  prevScreen: 'today',
   onbStep: 0,
   selectedLeadId: null,
   addSheetOpen: false,
   proSheetOpen: false,
+  rescheduleSheetOpen: false,
+  convertedSheetOpen: false,
+  convertedValueDraft: '',
+  noteDraft: '',
   snackMessage: null,
   // Add Lead draft
   draftName: '',
@@ -51,6 +66,32 @@ function showSnack(msg) {
     uiState.snackMessage = null;
     renderApp();
   }, 2200);
+}
+
+async function copyTextToClipboard(text) {
+  if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (_) {
+      // fallback below
+    }
+  }
+  if (typeof document !== 'undefined') {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+    } catch (_) {
+      // ignore
+    }
+    document.body.removeChild(ta);
+  }
+  return true;
 }
 
 function resetDraft() {
@@ -322,6 +363,188 @@ function renderTodayScreen(lang) {
   `;
 }
 
+function renderLeadDetailScreen(lang) {
+  const lead = appState.leads.find((l) => l.id === uiState.selectedLeadId);
+  if (!lead) {
+    uiState.screen = 'today';
+    return renderTodayScreen(lang);
+  }
+  const now = Date.now();
+  const events = getLeadEvents(appState, lead.id);
+  const tags = Array.isArray(lead.tags) ? lead.tags : [];
+
+  return `
+    <div class="fub" data-screen="detail" data-lead-id="${escapeHtml(lead.id)}">
+      <div class="fub-bar">
+        <button type="button" class="btn icon flat" id="btn-detail-back" aria-label="Back">←</button>
+        <h1 style="font-size:16px; font-weight:600;">${escapeHtml(t(lang, 'detail_title'))}</h1>
+        <button type="button" class="btn icon flat" id="btn-detail-archive" title="Archive lead" aria-label="Archive">🗄️</button>
+      </div>
+
+      <div class="fub-content no-pad">
+        <div class="detail-header">
+          <div style="display:flex; gap:14px; align-items:center;">
+            <div class="av" style="background:${avatarColor(lead.name)};">${escapeHtml(initials(lead.name))}</div>
+            <div style="flex:1; min-width:0;">
+              <div style="font-size:20px; font-weight:700; letter-spacing:-.01em;">${escapeHtml(lead.name)}</div>
+              <div style="font-size:13px; color:var(--fub-ink-3); margin-top:2px;">${escapeHtml(lead.handle)}</div>
+              <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
+                ${renderChannelChip(lead.source, lang)}
+                ${renderStatusPill(lead.status, lang)}
+                ${lead.priority ? `<span class="chip warn">★ ${escapeHtml(t(lang, 'chip_priority'))}</span>` : ''}
+                ${lead.convertedValue ? `<span class="chip tag">${escapeHtml(formatINR(lead.convertedValue))}</span>` : ''}
+              </div>
+            </div>
+          </div>
+
+          <div class="quick-actions">
+            <button type="button" class="qa wa" id="btn-qa-whatsapp">
+              <div class="ico">💬</div>
+              ${escapeHtml(t(lang, 'qa_whatsapp'))}
+            </button>
+            <button type="button" class="qa ig" id="btn-qa-instagram">
+              <div class="ico">📸</div>
+              ${escapeHtml(t(lang, 'qa_instagram'))}
+            </button>
+            <button type="button" class="qa copy" id="btn-qa-copy">
+              <div class="ico">📋</div>
+              ${escapeHtml(t(lang, 'qa_copy_msg'))}
+            </button>
+            <button type="button" class="qa" id="btn-qa-share">
+              <div class="ico">📤</div>
+              ${escapeHtml(t(lang, 'qa_share'))}
+            </button>
+          </div>
+        </div>
+
+        <div style="padding:12px 16px;">
+          <div class="fub-section" style="margin:6px 2px 8px;">
+            <h2>${escapeHtml(t(lang, 'section_interest'))}</h2>
+          </div>
+          <div style="background:var(--fub-card); border:1px solid var(--fub-line); border-radius:14px; padding:14px; font-size:14px; line-height:1.5; color:var(--fub-ink);">
+            ${escapeHtml(lead.interest)}
+          </div>
+
+          ${
+            tags.length > 0
+              ? `<div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap;">
+                   ${tags.map((tg) => `<span class="chip tag lg">${escapeHtml(tg)}</span>`).join('')}
+                 </div>`
+              : ''
+          }
+
+          <div class="fub-section">
+            <h2>${escapeHtml(t(lang, 'section_next_followup'))}</h2>
+          </div>
+          <div style="background:var(--fub-marigold-soft); border-radius:14px; padding:14px; display:flex; align-items:center; gap:12px;">
+            <div style="width:40px; height:40px; border-radius:10px; background:#fff; display:flex; align-items:center; justify-content:center; color:#8A5A04;">
+              🕒
+            </div>
+            <div style="flex:1;">
+              <div style="font-weight:700; color:#5e3d02;" id="detail-followup-rel">
+                ${escapeHtml(lead.nextFollowUpAt ? relTime(lead.nextFollowUpAt, now) : t(lang, 'no_followup_set'))}
+              </div>
+              <div style="font-size:12px; color:#8A5A04;">
+                ${escapeHtml(lead.nextFollowUpAt ? shortDate(lead.nextFollowUpAt) : t(lang, 'tap_to_schedule'))}
+              </div>
+            </div>
+            <button type="button" class="btn sm warn" id="btn-open-reschedule">
+              ✎ ${escapeHtml(t(lang, 'btn_reschedule'))}
+            </button>
+          </div>
+
+          <div class="fub-section">
+            <h2>${escapeHtml(t(lang, 'section_history'))}</h2>
+          </div>
+          <form id="form-add-note" style="display:flex; gap:8px; margin-bottom:10px;">
+            <input type="text" id="input-lead-note" placeholder="Add follow-up note…"
+              value="${escapeHtml(uiState.noteDraft)}"
+              style="flex:1; height:40px; border-radius:10px; border:1.5px solid var(--fub-line); background:var(--fub-card); padding:0 12px; font-size:13px;" />
+            <button type="submit" class="btn sm ghost">+ Note</button>
+          </form>
+          <div class="timeline" id="detail-timeline">
+            ${events
+              .map(
+                (ev, i) => `
+                  <div class="row">
+                    <div class="dot ${i === 0 ? '' : 'muted'}"></div>
+                    <div>
+                      <div class="when">${escapeHtml(relTime(ev.createdAt, now))} · ${escapeHtml(shortDate(ev.createdAt))}</div>
+                      <div class="what">${escapeHtml(ev.body)}</div>
+                    </div>
+                  </div>
+                `
+              )
+              .join('')}
+          </div>
+
+          <div class="fub-section">
+            <h2>${escapeHtml(t(lang, 'section_outcome'))}</h2>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:24px;">
+            <button type="button" class="btn primary sm" id="btn-outcome-converted">
+              ✓ ${escapeHtml(t(lang, 'btn_converted'))}
+            </button>
+            <button type="button" class="btn flat sm" id="btn-outcome-not-interested">
+              ${escapeHtml(t(lang, 'btn_not_interested'))}
+            </button>
+            <button type="button" class="btn danger sm" id="btn-outcome-lost">
+              ${escapeHtml(t(lang, 'btn_lost'))}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderRescheduleSheet(lang) {
+  const opts = [
+    { d: 1, lbl: t(lang, 'delay_tomorrow') },
+    { d: 2, lbl: t(lang, 'delay_2d') },
+    { d: 7, lbl: t(lang, 'delay_1w') },
+    { d: 30, lbl: t(lang, 'delay_1m') }
+  ];
+  return `
+    <div class="scrim" id="sheet-scrim"></div>
+    <div class="sheet" id="sheet-reschedule">
+      <div class="grab"></div>
+      <h2 style="margin:0 0 12px; font-size:18px; font-weight:800;">${escapeHtml(t(lang, 'btn_reschedule'))}</h2>
+      <div class="chip-row" style="margin-bottom:14px;">
+        ${opts
+          .map(
+            (o) => `
+              <button type="button" class="chip-pick reschedule-opt-btn" data-days="${o.d}">
+                ${escapeHtml(o.lbl)}
+              </button>
+            `
+          )
+          .join('')}
+      </div>
+      <button type="button" class="btn ghost block" id="btn-close-reschedule">${escapeHtml(t(lang, 'btn_cancel'))}</button>
+    </div>
+  `;
+}
+
+function renderConvertedSheet(lang) {
+  return `
+    <div class="scrim" id="sheet-scrim"></div>
+    <form class="sheet" id="form-converted-value">
+      <div class="grab"></div>
+      <h2 style="margin:0 0 8px; font-size:18px; font-weight:800;">🎉 ${escapeHtml(t(lang, 'btn_converted'))}</h2>
+      <div class="field">
+        <label for="input-converted-value">Order Value (₹ optional)</label>
+        <input type="number" id="input-converted-value" min="0" step="1" placeholder="e.g. 2400"
+          value="${escapeHtml(uiState.convertedValueDraft)}" />
+      </div>
+      <div style="display:flex; gap:10px; margin-top:12px;">
+        <button type="button" class="btn ghost" id="btn-skip-converted-value" style="flex:1;">Skip ₹</button>
+        <button type="submit" class="btn primary" style="flex:2;">✓ ${escapeHtml(t(lang, 'btn_converted'))}</button>
+      </div>
+    </form>
+  `;
+}
+
 function renderAddLeadSheet(lang) {
   const suggested = appState.tags.slice(0, 6).map((tg) => tg.name);
   const delayOpts = [
@@ -461,7 +684,7 @@ function renderTabBar(lang) {
     <nav class="fub-tabs" aria-label="Main Tabs">
       ${tabs
         .map((tb) => {
-          const active = uiState.tab === tb.id;
+          const active = uiState.tab === tb.id && uiState.screen !== 'detail';
           return `
             <button type="button" class="fub-tab ${active ? 'active' : ''}" data-tab="${tb.id}">
               <span class="pill" aria-hidden="true">${tb.icon}</span>
@@ -487,10 +710,19 @@ export function renderApp() {
     return;
   }
 
+  let mainScreenHtml = '';
+  if (uiState.screen === 'detail') {
+    mainScreenHtml = renderLeadDetailScreen(lang);
+  } else {
+    mainScreenHtml = renderTodayScreen(lang);
+  }
+
   root.innerHTML = `
-    ${renderTodayScreen(lang)}
+    ${mainScreenHtml}
     ${uiState.addSheetOpen ? renderAddLeadSheet(lang) : ''}
     ${uiState.proSheetOpen ? renderProUpsellSheet(lang) : ''}
+    ${uiState.rescheduleSheetOpen ? renderRescheduleSheet(lang) : ''}
+    ${uiState.convertedSheetOpen ? renderConvertedSheet(lang) : ''}
     ${uiState.snackMessage ? `<div class="snack">${escapeHtml(uiState.snackMessage)}</div>` : ''}
     ${renderTabBar(lang)}
   `;
@@ -537,6 +769,193 @@ function bindEvents(lang) {
     });
   }
 
+  // Open Lead Detail when clicking any lead card
+  root.querySelectorAll('.lead[data-lead-id]').forEach((card) => {
+    card.addEventListener('click', () => {
+      const leadId = card.getAttribute('data-lead-id');
+      if (!leadId) return;
+      uiState.prevScreen = uiState.screen;
+      uiState.selectedLeadId = leadId;
+      uiState.screen = 'detail';
+      renderApp();
+    });
+  });
+
+  // Lead Detail interactions
+  const backBtn = root.querySelector('#btn-detail-back');
+  if (backBtn) {
+    backBtn.addEventListener('click', () => {
+      uiState.screen = uiState.prevScreen || 'today';
+      renderApp();
+    });
+  }
+
+  const archiveBtn = root.querySelector('#btn-detail-archive');
+  if (archiveBtn && uiState.selectedLeadId) {
+    archiveBtn.addEventListener('click', () => {
+      appState = archiveLead(appState, uiState.selectedLeadId, true);
+      uiState.screen = uiState.prevScreen || 'today';
+      showSnack('Lead archived');
+      renderApp();
+    });
+  }
+
+  const currentLead = uiState.selectedLeadId
+    ? appState.leads.find((l) => l.id === uiState.selectedLeadId)
+    : null;
+
+  const qaWa = root.querySelector('#btn-qa-whatsapp');
+  if (qaWa && currentLead) {
+    qaWa.addEventListener('click', () => {
+      const msg = buildFollowUpMessage(currentLead, appState.settings.includeShareLine !== false);
+      const url = buildWhatsAppUrl(currentLead.handle, msg, appState.settings.defaultCountryCode || '91');
+      if (typeof window !== 'undefined' && window.open) {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+      appState = logLeadEvent(appState, currentLead.id, 'contacted', 'Sent WhatsApp follow-up');
+      showSnack(t(lang, 'snack_wa_opened'));
+      renderApp();
+    });
+  }
+
+  const qaIg = root.querySelector('#btn-qa-instagram');
+  if (qaIg && currentLead) {
+    qaIg.addEventListener('click', async () => {
+      const msg = buildFollowUpMessage(currentLead, appState.settings.includeShareLine !== false);
+      await copyTextToClipboard(msg);
+      const url = buildInstagramWebUrl(currentLead.handle);
+      if (typeof window !== 'undefined' && window.open) {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+      appState = logLeadEvent(appState, currentLead.id, 'contacted', 'Opened Instagram DM & copied follow-up');
+      showSnack(t(lang, 'snack_ig_opened'));
+      renderApp();
+    });
+  }
+
+  const qaCopy = root.querySelector('#btn-qa-copy');
+  if (qaCopy && currentLead) {
+    qaCopy.addEventListener('click', async () => {
+      const msg = buildFollowUpMessage(currentLead, appState.settings.includeShareLine !== false);
+      await copyTextToClipboard(msg);
+      showSnack(t(lang, 'snack_msg_copied'));
+      renderApp();
+    });
+  }
+
+  const qaShare = root.querySelector('#btn-qa-share');
+  if (qaShare && currentLead) {
+    qaShare.addEventListener('click', async () => {
+      const summary = buildLeadSummaryText(currentLead);
+      if (typeof navigator !== 'undefined' && navigator.share) {
+        try {
+          await navigator.share({ title: currentLead.name, text: summary });
+          return;
+        } catch (_) {
+          // fallback to clipboard
+        }
+      }
+      await copyTextToClipboard(summary);
+      showSnack(t(lang, 'snack_summary_copied'));
+      renderApp();
+    });
+  }
+
+  const openRescheduleBtn = root.querySelector('#btn-open-reschedule');
+  if (openRescheduleBtn) {
+    openRescheduleBtn.addEventListener('click', () => {
+      uiState.rescheduleSheetOpen = true;
+      renderApp();
+    });
+  }
+
+  root.querySelectorAll('.reschedule-opt-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (!currentLead) return;
+      const days = Number(btn.getAttribute('data-days') || 2);
+      appState = rescheduleFollowUp(appState, currentLead.id, days);
+      uiState.rescheduleSheetOpen = false;
+      showSnack(t(lang, 'snack_lead_saved', { days }));
+      renderApp();
+    });
+  });
+
+  const closeRescheduleBtn = root.querySelector('#btn-close-reschedule');
+  if (closeRescheduleBtn) {
+    closeRescheduleBtn.addEventListener('click', () => {
+      uiState.rescheduleSheetOpen = false;
+      renderApp();
+    });
+  }
+
+  const addNoteForm = root.querySelector('#form-add-note');
+  if (addNoteForm && currentLead) {
+    addNoteForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const input = root.querySelector('#input-lead-note');
+      const val = input ? input.value.trim() : '';
+      if (!val) return;
+      appState = logLeadEvent(appState, currentLead.id, 'note', val);
+      uiState.noteDraft = '';
+      renderApp();
+    });
+  }
+
+  const btnConverted = root.querySelector('#btn-outcome-converted');
+  if (btnConverted && currentLead) {
+    btnConverted.addEventListener('click', () => {
+      uiState.convertedValueDraft = currentLead.convertedValue ? String(currentLead.convertedValue) : '';
+      uiState.convertedSheetOpen = true;
+      renderApp();
+    });
+  }
+
+  const convertedForm = root.querySelector('#form-converted-value');
+  if (convertedForm && currentLead) {
+    convertedForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const valIn = root.querySelector('#input-converted-value');
+      const rawVal = valIn ? Number(valIn.value) : null;
+      appState = updateLeadStatus(
+        appState,
+        currentLead.id,
+        'converted',
+        rawVal && rawVal > 0 ? rawVal : null
+      );
+      uiState.convertedSheetOpen = false;
+      showSnack(t(lang, 'snack_marked_status', { status: 'converted' }));
+      renderApp();
+    });
+  }
+
+  const skipConvertedValBtn = root.querySelector('#btn-skip-converted-value');
+  if (skipConvertedValBtn && currentLead) {
+    skipConvertedValBtn.addEventListener('click', () => {
+      appState = updateLeadStatus(appState, currentLead.id, 'converted', null);
+      uiState.convertedSheetOpen = false;
+      showSnack(t(lang, 'snack_marked_status', { status: 'converted' }));
+      renderApp();
+    });
+  }
+
+  const btnNotInt = root.querySelector('#btn-outcome-not-interested');
+  if (btnNotInt && currentLead) {
+    btnNotInt.addEventListener('click', () => {
+      appState = updateLeadStatus(appState, currentLead.id, 'not_interested');
+      showSnack(t(lang, 'snack_marked_status', { status: 'not interested' }));
+      renderApp();
+    });
+  }
+
+  const btnLost = root.querySelector('#btn-outcome-lost');
+  if (btnLost && currentLead) {
+    btnLost.addEventListener('click', () => {
+      appState = updateLeadStatus(appState, currentLead.id, 'lost');
+      showSnack(t(lang, 'snack_marked_status', { status: 'lost' }));
+      renderApp();
+    });
+  }
+
   // Open Add Lead sheet via FAB, Empty CTA, or Add tab
   const openAddHandler = () => {
     if (!canAddActiveLead(appState)) {
@@ -574,7 +993,15 @@ function bindEvents(lang) {
   const scrim = root.querySelector('#sheet-scrim');
   if (closeAddBtn) closeAddBtn.addEventListener('click', () => { uiState.addSheetOpen = false; renderApp(); });
   if (cancelAddBtn) cancelAddBtn.addEventListener('click', () => { uiState.addSheetOpen = false; renderApp(); });
-  if (scrim) scrim.addEventListener('click', () => { uiState.addSheetOpen = false; uiState.proSheetOpen = false; renderApp(); });
+  if (scrim) {
+    scrim.addEventListener('click', () => {
+      uiState.addSheetOpen = false;
+      uiState.proSheetOpen = false;
+      uiState.rescheduleSheetOpen = false;
+      uiState.convertedSheetOpen = false;
+      renderApp();
+    });
+  }
 
   root.querySelectorAll('.source-seg-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
