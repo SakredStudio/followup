@@ -1,4 +1,4 @@
-// FollowUp Buddy — Main Application Controller (P0–P4: Onboarding, Today, AddLeadSheet, LeadDetail, AllLeadsScreen)
+// FollowUp Buddy — Main Application Controller (P0–P5: Onboarding, Today, AddLeadSheet, LeadDetail, AllLeadsScreen, Settings, PWA)
 import { registerTranslations, t } from './lib/i18n.js';
 import { initials, avatarColor, relTime, shortDate, formatHeaderDate, formatINR } from './lib/format.js';
 import {
@@ -14,6 +14,9 @@ import {
   logLeadEvent,
   archiveLead,
   getLeadEvents,
+  exportBackupJson,
+  importBackupJson,
+  exportLeadsCsv,
   seedSampleLeads,
   FREE_ACTIVE_LEAD_LIMIT
 } from './lib/store.js';
@@ -37,6 +40,8 @@ let uiState = {
   proSheetOpen: false,
   rescheduleSheetOpen: false,
   convertedSheetOpen: false,
+  backupSheetOpen: false,
+  profileSheetOpen: false,
   convertedValueDraft: '',
   noteDraft: '',
   snackMessage: null,
@@ -72,6 +77,19 @@ function showSnack(msg) {
     uiState.snackMessage = null;
     renderApp();
   }, 2200);
+}
+
+function triggerFileDownload(filename, content, mimeType) {
+  if (typeof document === 'undefined') return;
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 async function copyTextToClipboard(text) {
@@ -475,6 +493,207 @@ function renderAllLeadsScreen(lang) {
   `;
 }
 
+function renderSettingsScreen(lang) {
+  const s = appState.settings;
+  const archivedCount = appState.leads.filter((l) => Boolean(l.archived)).length;
+
+  return `
+    <div class="fub" data-screen="settings">
+      <div class="fub-bar">
+        <h1 style="flex:1;">${escapeHtml(t(lang, 'settings_title'))}</h1>
+        ${
+          s.isPro
+            ? `<button type="button" class="chip pro" id="btn-toggle-pro-mode" style="border:none; cursor:pointer;">✨ PRO</button>`
+            : ''
+        }
+      </div>
+
+      <div class="fub-content">
+        ${
+          !s.isPro
+            ? `<div class="pro-card" style="margin-bottom:18px;">
+                 <h3>${escapeHtml(t(lang, 'pro_card_settings_title'))}</h3>
+                 <p>${escapeHtml(t(lang, 'pro_card_settings_body'))}</p>
+                 <button type="button" class="btn sm" id="btn-settings-upgrade-pro">
+                   ✨ ${escapeHtml(t(lang, 'pro_card_settings_cta'))}
+                 </button>
+               </div>`
+            : ''
+        }
+
+        <div style="font-size:12px; font-weight:700; color:var(--fub-ink-3); text-transform:uppercase; letter-spacing:.08em; margin:4px 4px 8px;">
+          ${escapeHtml(t(lang, 'settings_group_profile'))}
+        </div>
+        <div class="settings-group">
+          <div class="setting" id="setting-row-profile" style="cursor:pointer;">
+            <div class="ico" style="background:var(--fub-emerald); color:#fff;">👤</div>
+            <div class="text">
+              <div class="t">${escapeHtml(s.sellerName)}</div>
+              <div class="s">${escapeHtml(s.sellerHandle)} · ${escapeHtml(s.sellerBusiness)}</div>
+            </div>
+            <span style="color:var(--fub-ink-3);">›</span>
+          </div>
+        </div>
+
+        <div style="font-size:12px; font-weight:700; color:var(--fub-ink-3); text-transform:uppercase; letter-spacing:.08em; margin:4px 4px 8px;">
+          ${escapeHtml(t(lang, 'settings_group_followups'))}
+        </div>
+        <div class="settings-group">
+          <div class="setting" id="setting-row-delay" style="cursor:pointer;">
+            <div class="ico">🕒</div>
+            <div class="text">
+              <div class="t">${escapeHtml(t(lang, 'setting_default_delay'))}</div>
+              <div class="s">${escapeHtml(t(lang, 'setting_default_delay_sub'))}</div>
+            </div>
+            <div style="font-size:14px; font-weight:700; color:var(--fub-emerald);" id="setting-delay-val">${s.defaultFollowUpDays}d</div>
+          </div>
+
+          <div class="setting">
+            <div class="ico">🔔</div>
+            <div class="text">
+              <div class="t">${escapeHtml(t(lang, 'setting_reminders'))}</div>
+              <div class="s">${escapeHtml(t(lang, 'setting_reminders_sub'))}</div>
+            </div>
+            <button type="button" id="btn-toggle-reminders" aria-label="Toggle reminders"
+              class="tog ${s.remindersEnabled ? 'on' : ''}" style="border:none;"></button>
+          </div>
+
+          <div class="setting">
+            <div class="ico">✨</div>
+            <div class="text">
+              <div class="t">${escapeHtml(t(lang, 'setting_morning_summary'))}</div>
+              <div class="s">${escapeHtml(t(lang, 'setting_morning_summary_sub'))}</div>
+            </div>
+            <button type="button" id="btn-toggle-morning" aria-label="Toggle morning summary"
+              class="tog ${s.morningSummaryEnabled ? 'on' : ''}" style="border:none;"></button>
+          </div>
+        </div>
+
+        <div style="font-size:12px; font-weight:700; color:var(--fub-ink-3); text-transform:uppercase; letter-spacing:.08em; margin:4px 4px 8px;">
+          ${escapeHtml(t(lang, 'settings_group_app'))}
+        </div>
+        <div class="settings-group">
+          <div class="setting">
+            <div class="ico cobalt">🌐</div>
+            <div class="text">
+              <div class="t">${escapeHtml(t(lang, 'setting_language'))}</div>
+              <div class="s">${s.language === 'en' ? 'English' : 'हिन्दी'}</div>
+            </div>
+            <div class="segmented" style="width:140px;">
+              <button type="button" class="lang-seg-btn ${s.language === 'en' ? 'on' : ''}" data-lang="en">EN</button>
+              <button type="button" class="lang-seg-btn ${s.language === 'hi' ? 'on' : ''}" data-lang="hi">हि</button>
+            </div>
+          </div>
+
+          <div class="setting" id="setting-row-theme" style="cursor:pointer;">
+            <div class="ico">🎨</div>
+            <div class="text">
+              <div class="t">${escapeHtml(t(lang, 'setting_theme'))} · ${escapeHtml(t(lang, 'setting_density'))}</div>
+              <div class="s">${escapeHtml(s.theme)} · ${escapeHtml(s.density)}</div>
+            </div>
+            <div style="display:flex; gap:6px;">
+              <button type="button" class="btn sm ghost" id="btn-cycle-theme">${s.theme === 'dark' ? '🌙' : '☀️'}</button>
+              <button type="button" class="btn sm ghost" id="btn-cycle-density">${escapeHtml(s.density)}</button>
+            </div>
+          </div>
+
+          <div class="setting" id="setting-row-backup" style="cursor:pointer;">
+            <div class="ico warn">⬇️</div>
+            <div class="text">
+              <div class="t">${escapeHtml(t(lang, 'setting_backup'))}</div>
+              <div class="s">${escapeHtml(t(lang, 'setting_backup_sub'))}</div>
+            </div>
+            <span style="color:var(--fub-ink-3);">›</span>
+          </div>
+
+          <div class="setting" id="setting-row-import-csv" style="cursor:pointer;">
+            <div class="ico">⬆️</div>
+            <div class="text">
+              <div class="t">${escapeHtml(t(lang, 'setting_import_csv'))}</div>
+              <div class="s"><span class="chip pro" style="font-size:10px; padding:1px 6px;">PRO</span></div>
+            </div>
+            <span style="color:var(--fub-ink-3);">›</span>
+          </div>
+
+          <div class="setting" id="setting-row-archived" style="cursor:pointer;">
+            <div class="ico">🗄️</div>
+            <div class="text">
+              <div class="t">${escapeHtml(t(lang, 'setting_archived'))}</div>
+              <div class="s">${escapeHtml(t(lang, 'setting_archived_sub', { count: archivedCount }))}</div>
+            </div>
+            <span style="color:var(--fub-ink-3);">›</span>
+          </div>
+
+          <div class="setting" id="setting-row-seed" style="cursor:pointer;">
+            <div class="ico">🌱</div>
+            <div class="text">
+              <div class="t">${escapeHtml(t(lang, 'setting_seed_demo'))}</div>
+              <div class="s">${escapeHtml(t(lang, 'setting_seed_demo_sub'))}</div>
+            </div>
+            <span style="color:var(--fub-ink-3);">›</span>
+          </div>
+        </div>
+
+        <div style="font-size:11px; color:var(--fub-ink-4); text-align:center; margin:16px 0; font-weight:500;">
+          ${escapeHtml(t(lang, 'footer_version'))} · <a href="./privacy.html" style="color:var(--fub-ink-3);">Privacy</a>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderBackupSheet(lang) {
+  return `
+    <div class="scrim" id="sheet-scrim"></div>
+    <div class="sheet" id="sheet-backup">
+      <div class="grab"></div>
+      <h2 style="margin:0 0 12px; font-size:18px; font-weight:800;">${escapeHtml(t(lang, 'setting_backup'))}</h2>
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <button type="button" class="btn primary block" id="btn-export-json">
+          ⬇️ Export JSON Backup (Free)
+        </button>
+        <label class="btn ghost block" style="cursor:pointer; margin:0;">
+          ⬆️ Restore JSON Backup
+          <input type="file" id="input-import-json" accept="application/json,.json" style="display:none;" />
+        </label>
+        <button type="button" class="btn ghost block" id="btn-export-csv">
+          📊 Export CSV ${appState.settings.isPro ? '(Pro)' : '🔒 PRO'}
+        </button>
+        <button type="button" class="btn flat block" id="btn-close-backup-sheet">
+          ${escapeHtml(t(lang, 'btn_cancel'))}
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function renderProfileSheet(lang) {
+  const s = appState.settings;
+  return `
+    <div class="scrim" id="sheet-scrim"></div>
+    <form class="sheet" id="form-profile-edit">
+      <div class="grab"></div>
+      <h2 style="margin:0 0 12px; font-size:18px; font-weight:800;">${escapeHtml(t(lang, 'settings_group_profile'))}</h2>
+      <div class="field">
+        <label for="profile-name-in">${escapeHtml(t(lang, 'field_name'))}</label>
+        <input id="profile-name-in" type="text" required value="${escapeHtml(s.sellerName)}" />
+      </div>
+      <div class="field">
+        <label for="profile-handle-in">Instagram / Handle</label>
+        <input id="profile-handle-in" type="text" value="${escapeHtml(s.sellerHandle)}" />
+      </div>
+      <div class="field">
+        <label for="profile-biz-in">Business Type</label>
+        <input id="profile-biz-in" type="text" value="${escapeHtml(s.sellerBusiness)}" />
+      </div>
+      <div style="display:flex; gap:10px; margin-top:12px;">
+        <button type="button" class="btn ghost" id="btn-close-profile-sheet" style="flex:1;">${escapeHtml(t(lang, 'btn_cancel'))}</button>
+        <button type="submit" class="btn primary" style="flex:2;">✓ Save</button>
+      </div>
+    </form>
+  `;
+}
+
 function renderLeadDetailScreen(lang) {
   const lead = appState.leads.find((l) => l.id === uiState.selectedLeadId);
   if (!lead) {
@@ -827,6 +1046,8 @@ export function renderApp() {
     mainScreenHtml = renderLeadDetailScreen(lang);
   } else if (uiState.screen === 'all') {
     mainScreenHtml = renderAllLeadsScreen(lang);
+  } else if (uiState.screen === 'settings') {
+    mainScreenHtml = renderSettingsScreen(lang);
   } else {
     mainScreenHtml = renderTodayScreen(lang);
   }
@@ -837,6 +1058,8 @@ export function renderApp() {
     ${uiState.proSheetOpen ? renderProUpsellSheet(lang) : ''}
     ${uiState.rescheduleSheetOpen ? renderRescheduleSheet(lang) : ''}
     ${uiState.convertedSheetOpen ? renderConvertedSheet(lang) : ''}
+    ${uiState.backupSheetOpen ? renderBackupSheet(lang) : ''}
+    ${uiState.profileSheetOpen ? renderProfileSheet(lang) : ''}
     ${uiState.snackMessage ? `<div class="snack">${escapeHtml(uiState.snackMessage)}</div>` : ''}
     ${renderTabBar(lang)}
   `;
@@ -962,6 +1185,213 @@ function bindEvents(lang) {
       const tagNames = ['all', ...appState.tags.map((tg) => tg.name)];
       const curIdx = tagNames.indexOf(uiState.tagFilter);
       uiState.tagFilter = tagNames[(curIdx + 1) % tagNames.length];
+      renderApp();
+    });
+  }
+
+  // Settings screen interactions
+  const settingsProBtn = root.querySelector('#btn-settings-upgrade-pro');
+  if (settingsProBtn) {
+    settingsProBtn.addEventListener('click', () => {
+      uiState.proSheetOpen = true;
+      renderApp();
+    });
+  }
+
+  const toggleProModeBtn = root.querySelector('#btn-toggle-pro-mode');
+  if (toggleProModeBtn) {
+    toggleProModeBtn.addEventListener('click', () => {
+      appState = updateSettings(appState, { isPro: !appState.settings.isPro });
+      renderApp();
+    });
+  }
+
+  const rowProfile = root.querySelector('#setting-row-profile');
+  if (rowProfile) {
+    rowProfile.addEventListener('click', () => {
+      uiState.profileSheetOpen = true;
+      renderApp();
+    });
+  }
+
+  const profileForm = root.querySelector('#form-profile-edit');
+  if (profileForm) {
+    profileForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const nIn = root.querySelector('#profile-name-in');
+      const hIn = root.querySelector('#profile-handle-in');
+      const bIn = root.querySelector('#profile-biz-in');
+      appState = updateSettings(appState, {
+        sellerName: nIn && nIn.value.trim() ? nIn.value.trim() : appState.settings.sellerName,
+        sellerHandle: hIn ? hIn.value.trim() : appState.settings.sellerHandle,
+        sellerBusiness: bIn ? bIn.value.trim() : appState.settings.sellerBusiness
+      });
+      uiState.profileSheetOpen = false;
+      renderApp();
+    });
+  }
+
+  const closeProfileBtn = root.querySelector('#btn-close-profile-sheet');
+  if (closeProfileBtn) {
+    closeProfileBtn.addEventListener('click', () => {
+      uiState.profileSheetOpen = false;
+      renderApp();
+    });
+  }
+
+  const rowDelay = root.querySelector('#setting-row-delay');
+  if (rowDelay) {
+    rowDelay.addEventListener('click', () => {
+      const cycle = [1, 2, 7, 30];
+      const idx = cycle.indexOf(appState.settings.defaultFollowUpDays);
+      const next = cycle[(idx + 1) % cycle.length];
+      appState = updateSettings(appState, { defaultFollowUpDays: next });
+      renderApp();
+    });
+  }
+
+  const togRem = root.querySelector('#btn-toggle-reminders');
+  if (togRem) {
+    togRem.addEventListener('click', () => {
+      const next = !appState.settings.remindersEnabled;
+      if (next && typeof Notification !== 'undefined' && Notification.permission === 'default') {
+        Notification.requestPermission().catch(() => {});
+      }
+      appState = updateSettings(appState, { remindersEnabled: next });
+      renderApp();
+    });
+  }
+
+  const togMorn = root.querySelector('#btn-toggle-morning');
+  if (togMorn) {
+    togMorn.addEventListener('click', () => {
+      appState = updateSettings(appState, {
+        morningSummaryEnabled: !appState.settings.morningSummaryEnabled
+      });
+      renderApp();
+    });
+  }
+
+  root.querySelectorAll('.lang-seg-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const nextLang = btn.getAttribute('data-lang') === 'hi' ? 'hi' : 'en';
+      appState = updateSettings(appState, { language: nextLang });
+      renderApp();
+    });
+  });
+
+  const cycleThemeBtn = root.querySelector('#btn-cycle-theme');
+  if (cycleThemeBtn) {
+    cycleThemeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const nextTheme = appState.settings.theme === 'dark' ? 'light' : 'dark';
+      appState = updateSettings(appState, { theme: nextTheme });
+      renderApp();
+    });
+  }
+
+  const cycleDensityBtn = root.querySelector('#btn-cycle-density');
+  if (cycleDensityBtn) {
+    cycleDensityBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const nextDensity = appState.settings.density === 'compact' ? 'comfy' : 'compact';
+      appState = updateSettings(appState, { density: nextDensity });
+      renderApp();
+    });
+  }
+
+  const rowBackup = root.querySelector('#setting-row-backup');
+  if (rowBackup) {
+    rowBackup.addEventListener('click', () => {
+      uiState.backupSheetOpen = true;
+      renderApp();
+    });
+  }
+
+  const closeBackupBtn = root.querySelector('#btn-close-backup-sheet');
+  if (closeBackupBtn) {
+    closeBackupBtn.addEventListener('click', () => {
+      uiState.backupSheetOpen = false;
+      renderApp();
+    });
+  }
+
+  const exportJsonBtn = root.querySelector('#btn-export-json');
+  if (exportJsonBtn) {
+    exportJsonBtn.addEventListener('click', () => {
+      const json = exportBackupJson(appState);
+      triggerFileDownload('followup-buddy-backup.json', json, 'application/json');
+      uiState.backupSheetOpen = false;
+      showSnack('JSON backup downloaded');
+      renderApp();
+    });
+  }
+
+  const importJsonIn = root.querySelector('#input-import-json');
+  if (importJsonIn) {
+    importJsonIn.addEventListener('change', async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        appState = importBackupJson(text);
+        uiState.backupSheetOpen = false;
+        showSnack('Backup restored');
+        renderApp();
+      } catch (_) {
+        showSnack('Invalid backup JSON');
+        renderApp();
+      }
+    });
+  }
+
+  const exportCsvBtn = root.querySelector('#btn-export-csv');
+  if (exportCsvBtn) {
+    exportCsvBtn.addEventListener('click', () => {
+      try {
+        const csv = exportLeadsCsv(appState);
+        triggerFileDownload('followup-buddy-leads.csv', csv, 'text/csv;charset=utf-8');
+        uiState.backupSheetOpen = false;
+        showSnack('CSV exported');
+        renderApp();
+      } catch (err) {
+        if (err && err.code === 'PRO_REQUIRED') {
+          uiState.backupSheetOpen = false;
+          uiState.proSheetOpen = true;
+          renderApp();
+        }
+      }
+    });
+  }
+
+  const rowImportCsv = root.querySelector('#setting-row-import-csv');
+  if (rowImportCsv) {
+    rowImportCsv.addEventListener('click', () => {
+      if (!appState.settings.isPro) {
+        uiState.proSheetOpen = true;
+        renderApp();
+      } else {
+        uiState.backupSheetOpen = true;
+        renderApp();
+      }
+    });
+  }
+
+  const rowArchived = root.querySelector('#setting-row-archived');
+  if (rowArchived) {
+    rowArchived.addEventListener('click', () => {
+      uiState.showArchived = true;
+      uiState.tab = 'all';
+      uiState.screen = 'all';
+      renderApp();
+    });
+  }
+
+  const rowSeed = root.querySelector('#setting-row-seed');
+  if (rowSeed) {
+    rowSeed.addEventListener('click', () => {
+      appState = seedSampleLeads(appState, globalThis.localStorage, Date.now());
+      showSnack('14 demo leads loaded');
       renderApp();
     });
   }
@@ -1198,6 +1628,8 @@ function bindEvents(lang) {
       uiState.proSheetOpen = false;
       uiState.rescheduleSheetOpen = false;
       uiState.convertedSheetOpen = false;
+      uiState.backupSheetOpen = false;
+      uiState.profileSheetOpen = false;
       renderApp();
     });
   }
@@ -1299,6 +1731,9 @@ export async function initApp() {
   uiState.screen = appState.settings.hasOnboarded ? 'today' : 'onboarding';
   saveState(appState);
   renderApp();
+  if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
 }
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {
