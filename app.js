@@ -1,4 +1,4 @@
-// FollowUp Buddy — Main Application Controller (P0–P1: Onboarding + Today screen)
+// FollowUp Buddy — Main Application Controller (P0–P2: Onboarding, Today, AddLeadSheet, Pro gate)
 import { registerTranslations, t } from './lib/i18n.js';
 import { initials, avatarColor, relTime, formatHeaderDate } from './lib/format.js';
 import {
@@ -6,19 +6,34 @@ import {
   saveState,
   updateSettings,
   getActiveLeadCount,
+  canAddActiveLead,
+  canAddTag,
+  addTag,
+  createLead,
   seedSampleLeads,
   FREE_ACTIVE_LEAD_LIMIT
 } from './lib/store.js';
 import { categorize, computeCatchUpBanner, startOfDay } from './lib/categorize.js';
 
 let appState = null;
+let snackTimer = null;
 let uiState = {
   tab: 'today', // 'today' | 'all' | 'settings'
   screen: 'today', // 'onboarding' | 'today' | 'detail' | 'all' | 'settings'
-  onbStep: 0, // 0, 1, 2
+  onbStep: 0,
   selectedLeadId: null,
   addSheetOpen: false,
-  snackMessage: null
+  proSheetOpen: false,
+  snackMessage: null,
+  // Add Lead draft
+  draftName: '',
+  draftHandle: '',
+  draftSource: 'whatsapp',
+  draftInterest: '',
+  draftFollowUpDays: 2,
+  draftCustomDate: '',
+  draftTags: ['Cakes'],
+  draftPriority: false
 };
 
 function escapeHtml(str) {
@@ -27,6 +42,26 @@ function escapeHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function showSnack(msg) {
+  if (snackTimer) clearTimeout(snackTimer);
+  uiState.snackMessage = msg;
+  snackTimer = setTimeout(() => {
+    uiState.snackMessage = null;
+    renderApp();
+  }, 2200);
+}
+
+function resetDraft() {
+  uiState.draftName = '';
+  uiState.draftHandle = '';
+  uiState.draftSource = 'whatsapp';
+  uiState.draftInterest = '';
+  uiState.draftFollowUpDays = appState?.settings?.defaultFollowUpDays || 2;
+  uiState.draftCustomDate = '';
+  uiState.draftTags = ['Cakes'];
+  uiState.draftPriority = false;
 }
 
 async function loadDictionaries() {
@@ -287,6 +322,134 @@ function renderTodayScreen(lang) {
   `;
 }
 
+function renderAddLeadSheet(lang) {
+  const suggested = appState.tags.slice(0, 6).map((tg) => tg.name);
+  const delayOpts = [
+    { d: 1, lbl: t(lang, 'delay_tomorrow') },
+    { d: 2, lbl: t(lang, 'delay_2d') },
+    { d: 7, lbl: t(lang, 'delay_1w') },
+    { d: 30, lbl: t(lang, 'delay_1m') }
+  ];
+  const allowMoreTags = canAddTag(appState);
+
+  return `
+    <div class="scrim" id="sheet-scrim"></div>
+    <form class="sheet" id="form-add-lead">
+      <div class="grab"></div>
+      <div style="display:flex; align-items:center; margin-bottom:10px;">
+        <h2 style="margin:0; font-size:20px; font-weight:800; letter-spacing:-.01em; flex:1;">
+          ${escapeHtml(t(lang, 'sheet_new_lead_title'))}
+        </h2>
+        <button type="button" class="btn icon flat" id="btn-close-add-sheet" aria-label="Close">✕</button>
+      </div>
+
+      <div class="field">
+        <label for="lead-name-input">${escapeHtml(t(lang, 'field_name'))}</label>
+        <input id="lead-name-input" name="name" type="text" required
+          value="${escapeHtml(uiState.draftName)}"
+          placeholder="${escapeHtml(t(lang, 'field_name_placeholder'))}" />
+      </div>
+
+      <div class="field">
+        <label>${escapeHtml(t(lang, 'field_source_handle'))}</label>
+        <div class="segmented" style="margin-bottom:8px;">
+          <button type="button" class="source-seg-btn ${uiState.draftSource === 'whatsapp' ? 'on' : ''}" data-source="whatsapp">
+            ${escapeHtml(t(lang, 'source_whatsapp'))}
+          </button>
+          <button type="button" class="source-seg-btn ${uiState.draftSource === 'instagram' ? 'on' : ''}" data-source="instagram">
+            ${escapeHtml(t(lang, 'source_instagram'))}
+          </button>
+          <button type="button" class="source-seg-btn ${uiState.draftSource === 'other' ? 'on' : ''}" data-source="other">
+            ${escapeHtml(t(lang, 'source_other'))}
+          </button>
+        </div>
+        <input id="lead-handle-input" name="handle" type="text"
+          value="${escapeHtml(uiState.draftHandle)}"
+          placeholder="${escapeHtml(uiState.draftSource === 'whatsapp' ? t(lang, 'placeholder_wa') : t(lang, 'placeholder_ig'))}" />
+      </div>
+
+      <div class="field">
+        <label for="lead-interest-input">${escapeHtml(t(lang, 'field_interest'))}</label>
+        <textarea id="lead-interest-input" name="interest"
+          placeholder="${escapeHtml(t(lang, 'field_interest_placeholder'))}">${escapeHtml(uiState.draftInterest)}</textarea>
+        <div class="hint">${escapeHtml(t(lang, 'field_interest_hint'))}</div>
+      </div>
+
+      <div class="field">
+        <label>${escapeHtml(t(lang, 'field_followup_in'))}</label>
+        <div class="chip-row">
+          ${delayOpts
+            .map(
+              (o) => `
+                <button type="button" class="chip-pick delay-chip-btn ${uiState.draftFollowUpDays === o.d ? 'on' : ''}" data-days="${o.d}">
+                  ${escapeHtml(o.lbl)}
+                </button>
+              `
+            )
+            .join('')}
+        </div>
+      </div>
+
+      <div class="field">
+        <label>${escapeHtml(t(lang, 'field_tags'))}</label>
+        <div class="chip-row">
+          ${suggested
+            .map((tg) => {
+              const on = uiState.draftTags.includes(tg);
+              return `
+                <button type="button" class="chip-pick tag-chip-btn ${on ? 'on' : ''}" data-tag="${escapeHtml(tg)}">
+                  ${escapeHtml(tg)}
+                </button>
+              `;
+            })
+            .join('')}
+          <button type="button" id="btn-add-tag-chip" class="chip-pick">
+            ${escapeHtml(allowMoreTags ? t(lang, 'tag_new') : t(lang, 'tag_upgrade'))}
+          </button>
+        </div>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:12px; padding:8px 2px;">
+        <input type="checkbox" id="lead-priority-check" ${uiState.draftPriority ? 'checked' : ''}
+          style="width:20px; height:20px; min-height:20px; accent-color:var(--fub-emerald);" />
+        <label for="lead-priority-check" style="margin:0; font-size:14px; color:var(--fub-ink); font-weight:600; cursor:pointer;">
+          ${escapeHtml(t(lang, 'field_priority'))} ★
+        </label>
+      </div>
+
+      <div style="display:flex; gap:10px; margin-top:14px;">
+        <button type="button" class="btn ghost" id="btn-cancel-add-lead" style="flex:1;">
+          ${escapeHtml(t(lang, 'btn_cancel'))}
+        </button>
+        <button type="submit" class="btn primary" style="flex:2;">
+          ✓ ${escapeHtml(t(lang, 'btn_save_lead'))}
+        </button>
+      </div>
+    </form>
+  `;
+}
+
+function renderProUpsellSheet(lang) {
+  return `
+    <div class="scrim" id="sheet-scrim"></div>
+    <div class="sheet">
+      <div class="grab"></div>
+      <div class="pro-card">
+        <h3>${escapeHtml(t(lang, 'pro_card_settings_title'))}</h3>
+        <p>${escapeHtml(t(lang, 'pro_card_settings_body'))}</p>
+        <div style="display:flex; gap:8px;">
+          <button type="button" id="btn-activate-pro" class="btn sm">
+            ✨ ${escapeHtml(t(lang, 'pro_card_settings_cta'))}
+          </button>
+          <button type="button" id="btn-close-pro-sheet" class="btn sm ghost" style="color:#fff; border-color:rgba(255,255,255,.35);">
+            ${escapeHtml(t(lang, 'btn_cancel'))}
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function renderTabBar(lang) {
   const tabs = [
     { id: 'today', label: t(lang, 'tab_today'), icon: '☀️' },
@@ -320,19 +483,32 @@ export function renderApp() {
 
   if (!appState.settings.hasOnboarded && uiState.screen === 'onboarding') {
     root.innerHTML = renderOnboardingScreen(lang);
-    bindEvents();
+    bindEvents(lang);
     return;
   }
 
   root.innerHTML = `
     ${renderTodayScreen(lang)}
+    ${uiState.addSheetOpen ? renderAddLeadSheet(lang) : ''}
+    ${uiState.proSheetOpen ? renderProUpsellSheet(lang) : ''}
     ${uiState.snackMessage ? `<div class="snack">${escapeHtml(uiState.snackMessage)}</div>` : ''}
     ${renderTabBar(lang)}
   `;
-  bindEvents();
+  bindEvents(lang);
 }
 
-function bindEvents() {
+function syncDraftInputs(root) {
+  const nameIn = root.querySelector('#lead-name-input');
+  const handleIn = root.querySelector('#lead-handle-input');
+  const interestIn = root.querySelector('#lead-interest-input');
+  const prioIn = root.querySelector('#lead-priority-check');
+  if (nameIn) uiState.draftName = nameIn.value;
+  if (handleIn) uiState.draftHandle = handleIn.value;
+  if (interestIn) uiState.draftInterest = interestIn.value;
+  if (prioIn) uiState.draftPriority = prioIn.checked;
+}
+
+function bindEvents(lang) {
   const root = document.getElementById('app');
   if (!root) return;
 
@@ -361,12 +537,29 @@ function bindEvents() {
     });
   }
 
+  // Open Add Lead sheet via FAB, Empty CTA, or Add tab
+  const openAddHandler = () => {
+    if (!canAddActiveLead(appState)) {
+      uiState.proSheetOpen = true;
+      renderApp();
+      return;
+    }
+    resetDraft();
+    uiState.addSheetOpen = true;
+    renderApp();
+  };
+
+  const fabAdd = root.querySelector('#btn-fab-add');
+  if (fabAdd) fabAdd.addEventListener('click', openAddHandler);
+
+  const emptyAdd = root.querySelector('#btn-empty-add-lead');
+  if (emptyAdd) emptyAdd.addEventListener('click', openAddHandler);
+
   root.querySelectorAll('[data-tab]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const tabId = btn.getAttribute('data-tab');
       if (tabId === 'add') {
-        uiState.addSheetOpen = true;
-        renderApp();
+        openAddHandler();
         return;
       }
       uiState.tab = tabId;
@@ -374,6 +567,101 @@ function bindEvents() {
       renderApp();
     });
   });
+
+  // Add Lead sheet interactions
+  const closeAddBtn = root.querySelector('#btn-close-add-sheet');
+  const cancelAddBtn = root.querySelector('#btn-cancel-add-lead');
+  const scrim = root.querySelector('#sheet-scrim');
+  if (closeAddBtn) closeAddBtn.addEventListener('click', () => { uiState.addSheetOpen = false; renderApp(); });
+  if (cancelAddBtn) cancelAddBtn.addEventListener('click', () => { uiState.addSheetOpen = false; renderApp(); });
+  if (scrim) scrim.addEventListener('click', () => { uiState.addSheetOpen = false; uiState.proSheetOpen = false; renderApp(); });
+
+  root.querySelectorAll('.source-seg-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      syncDraftInputs(root);
+      uiState.draftSource = btn.getAttribute('data-source') || 'whatsapp';
+      renderApp();
+    });
+  });
+
+  root.querySelectorAll('.delay-chip-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      syncDraftInputs(root);
+      uiState.draftFollowUpDays = Number(btn.getAttribute('data-days') || 2);
+      renderApp();
+    });
+  });
+
+  root.querySelectorAll('.tag-chip-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      syncDraftInputs(root);
+      const tg = btn.getAttribute('data-tag');
+      if (!tg) return;
+      if (uiState.draftTags.includes(tg)) {
+        uiState.draftTags = uiState.draftTags.filter((x) => x !== tg);
+      } else {
+        uiState.draftTags = [...uiState.draftTags, tg];
+      }
+      renderApp();
+    });
+  });
+
+  const addTagChipBtn = root.querySelector('#btn-add-tag-chip');
+  if (addTagChipBtn) {
+    addTagChipBtn.addEventListener('click', () => {
+      syncDraftInputs(root);
+      if (!canAddTag(appState)) {
+        uiState.addSheetOpen = false;
+        uiState.proSheetOpen = true;
+        renderApp();
+      }
+    });
+  }
+
+  const addLeadForm = root.querySelector('#form-add-lead');
+  if (addLeadForm) {
+    addLeadForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      syncDraftInputs(root);
+      try {
+        appState = createLead(appState, {
+          name: uiState.draftName,
+          handle: uiState.draftHandle,
+          source: uiState.draftSource,
+          interest: uiState.draftInterest,
+          followUpDays: uiState.draftFollowUpDays,
+          tags: uiState.draftTags,
+          priority: uiState.draftPriority
+        });
+        uiState.addSheetOpen = false;
+        showSnack(t(lang, 'snack_lead_saved', { days: uiState.draftFollowUpDays }));
+        renderApp();
+      } catch (err) {
+        if (err && (err.code === 'PRO_LIMIT_REACHED' || err.code === 'PRO_PRIORITY_LIMIT')) {
+          uiState.addSheetOpen = false;
+          uiState.proSheetOpen = true;
+          renderApp();
+        }
+      }
+    });
+  }
+
+  const activateProBtn = root.querySelector('#btn-activate-pro');
+  if (activateProBtn) {
+    activateProBtn.addEventListener('click', () => {
+      appState = updateSettings(appState, { isPro: true });
+      uiState.proSheetOpen = false;
+      renderApp();
+    });
+  }
+
+  const closeProBtn = root.querySelector('#btn-close-pro-sheet');
+  if (closeProBtn) {
+    closeProBtn.addEventListener('click', () => {
+      uiState.proSheetOpen = false;
+      renderApp();
+    });
+  }
 }
 
 export async function initApp() {

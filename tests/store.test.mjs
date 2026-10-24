@@ -81,6 +81,22 @@ test('store: enforces 50 active leads free limit and 3 priority leads free limit
   assert.equal(state.leads.length, 51);
 });
 
+test('store: enforces 5 active tags free limit and unlocks with Pro', async () => {
+  const { addTag, canAddTag } = await import('../lib/store.js');
+  const mem = createMemoryStorage();
+  let state = createInitialState(1000);
+  // Initial state already has 5 tags
+  assert.equal(state.tags.length, 5);
+  assert.equal(canAddTag(state), false);
+  assert.throws(
+    () => addTag(state, 'CustomTag6', mem),
+    (err) => err.code === 'PRO_TAG_LIMIT'
+  );
+  state = updateSettings(state, { isPro: true }, mem);
+  state = addTag(state, 'CustomTag6', mem);
+  assert.equal(state.tags.length, 6);
+});
+
 test('store: seedSampleLeads(14), rescheduleFollowUp, JSON backup round-trip, and Pro CSV export', () => {
   const mem = createMemoryStorage();
   let state = seedSampleLeads(createInitialState(1000), mem, 1000);
