@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   categorize,
+  filterLeads,
   computeCatchUpBanner,
   buildDailySummaryNotification
 } from '../lib/categorize.js';
@@ -57,4 +58,21 @@ test('categorize: computeCatchUpBanner and buildDailySummaryNotification', () =>
   assert.equal(notif.title, '6 leads to follow up today ☀️');
   assert.ok(notif.body.includes('Priya'));
   assert.ok(notif.body.includes('+1 more'));
+});
+
+test('filterLeads: filters by query (name + handle + interest + tags), statusF, sourceF, tagF, and showArchived', () => {
+  const { leads } = buildSeedDataset(PROTOTYPE_ANCHOR_MS);
+  assert.equal(filterLeads(leads).length, 14);
+  assert.equal(filterLeads(leads, { statusF: 'converted' }).length, 1);
+  assert.equal(filterLeads(leads, { statusF: 'not_interested' }).length, 1);
+  assert.equal(filterLeads(leads, { statusF: 'lost' }).length, 1);
+  assert.equal(filterLeads(leads, { sourceF: 'instagram' }).length, 7);
+  assert.equal(filterLeads(leads, { sourceF: 'whatsapp' }).length, 7);
+  assert.equal(filterLeads(leads, { query: 'Red velvet' }).length, 1);
+  assert.equal(filterLeads(leads, { tagF: 'Sarees' }).length, 2);
+
+  // Archive check
+  const withArchived = leads.map((l, idx) => (idx === 0 ? { ...l, archived: true } : l));
+  assert.equal(filterLeads(withArchived, { showArchived: false }).length, 13);
+  assert.equal(filterLeads(withArchived, { showArchived: true }).length, 1);
 });

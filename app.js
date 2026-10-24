@@ -1,4 +1,4 @@
-// FollowUp Buddy — Main Application Controller (P0–P3: Onboarding, Today, AddLeadSheet, LeadDetail, Channels)
+// FollowUp Buddy — Main Application Controller (P0–P4: Onboarding, Today, AddLeadSheet, LeadDetail, AllLeadsScreen)
 import { registerTranslations, t } from './lib/i18n.js';
 import { initials, avatarColor, relTime, shortDate, formatHeaderDate, formatINR } from './lib/format.js';
 import {
@@ -17,7 +17,7 @@ import {
   seedSampleLeads,
   FREE_ACTIVE_LEAD_LIMIT
 } from './lib/store.js';
-import { categorize, computeCatchUpBanner, startOfDay } from './lib/categorize.js';
+import { categorize, filterLeads, computeCatchUpBanner, startOfDay } from './lib/categorize.js';
 import {
   buildFollowUpMessage,
   buildWhatsAppUrl,
@@ -40,6 +40,12 @@ let uiState = {
   convertedValueDraft: '',
   noteDraft: '',
   snackMessage: null,
+  // All Leads filters
+  searchQuery: '',
+  statusFilter: 'all',
+  sourceFilter: 'all',
+  tagFilter: 'all',
+  showArchived: false,
   // Add Lead draft
   draftName: '',
   draftHandle: '',
@@ -359,6 +365,112 @@ function renderTodayScreen(lang) {
         <span>+</span>
         <span>${escapeHtml(t(lang, 'fab_add_lead'))}</span>
       </button>
+    </div>
+  `;
+}
+
+function renderAllLeadsScreen(lang) {
+  const now = Date.now();
+  const nonArchivedTotal = appState.leads.filter((l) => !l.archived).length;
+  const archivedTotal = appState.leads.filter((l) => Boolean(l.archived)).length;
+  const filtered = filterLeads(appState.leads, {
+    query: uiState.searchQuery,
+    statusF: uiState.statusFilter,
+    sourceF: uiState.sourceFilter,
+    tagF: uiState.tagFilter,
+    showArchived: uiState.showArchived
+  });
+
+  const statusPills = [
+    { id: 'all', lbl: t(lang, 'filter_all', { count: nonArchivedTotal }) },
+    { id: 'active', lbl: t(lang, 'filter_active') },
+    { id: 'converted', lbl: t(lang, 'filter_converted') },
+    { id: 'not_interested', lbl: t(lang, 'filter_not_int') },
+    { id: 'lost', lbl: t(lang, 'filter_lost') }
+  ];
+
+  const sourcePills = [
+    { id: 'all', lbl: t(lang, 'filter_any_source') },
+    { id: 'whatsapp', lbl: `💬 ${t(lang, 'source_whatsapp')}` },
+    { id: 'instagram', lbl: `📸 ${t(lang, 'source_instagram')}` }
+  ];
+
+  return `
+    <div class="fub" data-screen="all">
+      <div class="fub-bar">
+        <h1 style="flex:1;">${escapeHtml(t(lang, 'all_title'))}</h1>
+        <button type="button" class="btn flat sm ${uiState.showArchived ? 'primary' : ''}" id="btn-toggle-archived">
+          🗄️ ${archivedTotal}
+        </button>
+      </div>
+
+      <div class="fub-content">
+        <div class="search">
+          <span aria-hidden="true">🔍</span>
+          <input type="text" id="input-all-search"
+            value="${escapeHtml(uiState.searchQuery)}"
+            placeholder="${escapeHtml(t(lang, 'search_placeholder'))}" />
+          ${
+            uiState.searchQuery
+              ? `<button type="button" id="btn-clear-search" class="btn icon flat" style="width:28px;height:28px;min-height:28px;">✕</button>`
+              : ''
+          }
+        </div>
+
+        <div class="filters" aria-label="Status filters">
+          ${statusPills
+            .map(
+              (p) => `
+                <button type="button" class="filter status-filter-btn ${uiState.statusFilter === p.id ? 'on' : ''}" data-status="${p.id}">
+                  ${escapeHtml(p.lbl)}
+                </button>
+              `
+            )
+            .join('')}
+        </div>
+
+        <div class="filters" aria-label="Source filters">
+          ${sourcePills
+            .map(
+              (p) => `
+                <button type="button" class="filter source-filter-btn ${uiState.sourceFilter === p.id ? 'on' : ''}" data-source-f="${p.id}">
+                  ${escapeHtml(p.lbl)}
+                </button>
+              `
+            )
+            .join('')}
+          <button type="button" id="btn-tag-pro-filter"
+            class="filter ${uiState.tagFilter !== 'all' ? 'on' : ''}"
+            style="border-style:dashed;">
+            ✨ ${escapeHtml(uiState.tagFilter !== 'all' ? uiState.tagFilter : t(lang, 'filter_tag_pro'))}
+            <span class="chip pro" style="font-size:9px; padding:1px 5px;">PRO</span>
+          </button>
+        </div>
+
+        <div style="font-size:12px; color:var(--fub-ink-3); margin:6px 4px 8px; font-weight:600;" id="all-leads-count">
+          ${escapeHtml(
+            filtered.length === 1
+              ? t(lang, 'lead_count_single', { count: 1 })
+              : t(lang, 'lead_count_plural', { count: filtered.length })
+          )}
+        </div>
+
+        ${filtered
+          .map((l) => renderLeadRow(l, { showFollowUp: l.status === 'active', now, lang }))
+          .join('')}
+
+        ${
+          filtered.length === 0
+            ? `<div class="empty">
+                 <div style="font-size:48px;">🔎</div>
+                 <h3>${escapeHtml(t(lang, 'empty_search_title'))}</h3>
+                 <p>${escapeHtml(t(lang, 'empty_search_sub'))}</p>
+               </div>`
+            : ''
+        }
+      </div>
+
+      <button type="button" class="fab" id="btn-fab-add" aria-label="Add Lead">+</button>
     </div>
   `;
 }
@@ -713,6 +825,8 @@ export function renderApp() {
   let mainScreenHtml = '';
   if (uiState.screen === 'detail') {
     mainScreenHtml = renderLeadDetailScreen(lang);
+  } else if (uiState.screen === 'all') {
+    mainScreenHtml = renderAllLeadsScreen(lang);
   } else {
     mainScreenHtml = renderTodayScreen(lang);
   }
@@ -769,6 +883,89 @@ function bindEvents(lang) {
     });
   }
 
+  const todaySearchBtn = root.querySelector('#btn-today-search');
+  if (todaySearchBtn) {
+    todaySearchBtn.addEventListener('click', () => {
+      uiState.tab = 'all';
+      uiState.screen = 'all';
+      renderApp();
+      const sIn = document.querySelector('#input-all-search');
+      if (sIn) sIn.focus();
+    });
+  }
+
+  const todayProBtn = root.querySelector('#btn-today-pro-upsell');
+  if (todayProBtn) {
+    todayProBtn.addEventListener('click', () => {
+      uiState.proSheetOpen = true;
+      renderApp();
+    });
+  }
+
+  // All Leads search & filter controls
+  const searchInput = root.querySelector('#input-all-search');
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      uiState.searchQuery = e.target.value;
+      const pos = e.target.selectionStart;
+      renderApp();
+      const nextIn = document.querySelector('#input-all-search');
+      if (nextIn) {
+        nextIn.focus();
+        try {
+          nextIn.setSelectionRange(pos, pos);
+        } catch (_) {
+          // ignore
+        }
+      }
+    });
+  }
+
+  const clearSearchBtn = root.querySelector('#btn-clear-search');
+  if (clearSearchBtn) {
+    clearSearchBtn.addEventListener('click', () => {
+      uiState.searchQuery = '';
+      renderApp();
+    });
+  }
+
+  const toggleArchBtn = root.querySelector('#btn-toggle-archived');
+  if (toggleArchBtn) {
+    toggleArchBtn.addEventListener('click', () => {
+      uiState.showArchived = !uiState.showArchived;
+      renderApp();
+    });
+  }
+
+  root.querySelectorAll('.status-filter-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      uiState.statusFilter = btn.getAttribute('data-status') || 'all';
+      renderApp();
+    });
+  });
+
+  root.querySelectorAll('.source-filter-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      uiState.sourceFilter = btn.getAttribute('data-source-f') || 'all';
+      renderApp();
+    });
+  });
+
+  const tagProFilterBtn = root.querySelector('#btn-tag-pro-filter');
+  if (tagProFilterBtn) {
+    tagProFilterBtn.addEventListener('click', () => {
+      if (!appState.settings.isPro) {
+        uiState.proSheetOpen = true;
+        renderApp();
+        return;
+      }
+      const tagNames = ['all', ...appState.tags.map((tg) => tg.name)];
+      const curIdx = tagNames.indexOf(uiState.tagFilter);
+      uiState.tagFilter = tagNames[(curIdx + 1) % tagNames.length];
+      renderApp();
+    });
+  }
+
   // Open Lead Detail when clicking any lead card
   root.querySelectorAll('.lead[data-lead-id]').forEach((card) => {
     card.addEventListener('click', () => {
@@ -793,9 +990,11 @@ function bindEvents(lang) {
   const archiveBtn = root.querySelector('#btn-detail-archive');
   if (archiveBtn && uiState.selectedLeadId) {
     archiveBtn.addEventListener('click', () => {
-      appState = archiveLead(appState, uiState.selectedLeadId, true);
+      const lead = appState.leads.find((l) => l.id === uiState.selectedLeadId);
+      const nextArchived = !(lead && lead.archived);
+      appState = archiveLead(appState, uiState.selectedLeadId, nextArchived);
       uiState.screen = uiState.prevScreen || 'today';
-      showSnack('Lead archived');
+      showSnack(nextArchived ? 'Lead archived' : 'Lead unarchived');
       renderApp();
     });
   }
