@@ -34,6 +34,18 @@ import { STAGES, groupByStage, deriveStage } from './lib/pipeline.js';
 import { computeStats } from './lib/stats.js';
 import { hasSharePayload, readSharePayload, parseSharedPayload } from './lib/share-target.js';
 import { snoozePresets, pickDateAt } from './lib/snooze.js';
+import {
+  productLimit,
+  addProduct,
+  updateProduct,
+  removeProduct,
+  buildProductCardModel,
+  buildProductMessage,
+  productCardFileName,
+  drawProductCard,
+  canvasToPngBlob
+} from './lib/catalogue.js';
+import { importPhoto, getPhoto, deletePhoto, clearPhotos } from './lib/photos.js';
 import { MAX_TEMPLATES, buildMessageForLead, resolveTemplate, saveTemplate, deleteTemplate, assignTagTemplate } from './lib/templates.js';
 import {
   canNotify,
@@ -71,6 +83,11 @@ let uiState = {
   notifyCap: null, // result of canNotify()
   templateSheetOpen: false,
   templateDraft: { id: null, name: '', text: '' },
+  productSheetOpen: false,
+  productDraft: { id: null, name: '', price: '', photoId: null },
+  productPickerOpen: false,
+  cardBusy: false,
+  photoUrls: {}, // photoId -> object URL (browser cache for thumbnails)
   convertedValueDraft: '',
   noteDraft: '',
   snackMessage: null,
@@ -778,6 +795,181 @@ function renderTemplateSheet(lang) {
   `;
 }
 
+/** Make sure object URLs exist for catalogue photos (async; re-renders when loaded). */
+function ensurePhotoUrls() {
+  const missing = (appState.catalogue || []).filter((p) => p.photoId && !uiState.photoUrls[p.photoId]);
+  if (missing.length === 0 || typeof URL === 'undefined') return;
+  Promise.all(
+    missing.map(async (p) => {
+      const blob = await getPhoto(p.photoId);
+      if (blob) uiState.photoUrls[p.photoId] = URL.createObjectURL(blob);
+    })
+  ).then(() => renderApp());
+}
+
+function renderProductThumb(p) {
+  const url = p.photoId ? uiState.photoUrls[p.photoId] : null;
+  return url
+    ? `<div class="prd-thumb" style="background-image:url('${escapeHtml(url)}');"></div>`
+    : `<div class="prd-thumb empty">🛍️</div>`;
+}
+
+function renderCatalogueScreen(lang) {
+  const s = appState.settings;
+  const list = appState.catalogue || [];
+  const limit = productLimit(s);
+  ensurePhotoUrls();
+  return `
+    <div class="fub" data-screen="catalogue">
+      <div class="fub-bar">
+        <button type="button" class="btn icon flat" id="btn-catalogue-back" aria-label="${escapeHtml(t(lang, 'btn_back'))}">←</button>
+        <h1 style="flex:1;">${escapeHtml(t(lang, 'catalogue_title'))}</h1>
+        <span class="chip ${s.isPro ? 'pro' : ''}">${list.length} / ${limit}</span>
+      </div>
+      <div class="fub-content">
+        <p style="font-size:13px; color:var(--fub-ink-2); margin:0 2px 12px; line-height:1.45;">${escapeHtml(t(lang, 'catalogue_intro'))}</p>
+        ${list
+          .map(
+            (p) => `
+              <div class="prd-card">
+                ${renderProductThumb(p)}
+                <div style="flex:1; min-width:0;">
+                  <div style="font-weight:700; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(p.name)}</div>
+                  <div style="color:var(--fub-emerald-deep); font-weight:700;">${escapeHtml(formatINR(p.price))}</div>
+                </div>
+                <button type="button" class="btn sm ghost prd-edit-btn" data-id="${escapeHtml(p.id)}">✎</button>
+                <button type="button" class="btn sm danger prd-del-btn" data-id="${escapeHtml(p.id)}" aria-label="${escapeHtml(t(lang, 'btn_delete'))}">🗑</button>
+              </div>`
+          )
+          .join('')}
+        ${
+          list.length < limit
+            ? `<button type="button" class="btn ghost block" id="btn-new-product" style="margin:4px 0 16px;">+ ${escapeHtml(t(lang, 'catalogue_add'))}</button>`
+            : `<div style="font-size:12px; color:var(--fub-ink-3); margin:4px 2px 16px;">${escapeHtml(
+                s.isPro ? t(lang, 'catalogue_limit_pro', { max: limit }) : t(lang, 'catalogue_limit_free', { max: limit })
+              )}</div>
+              ${s.isPro ? '' : `<button type="button" class="btn primary block" id="btn-catalogue-upsell" style="margin-bottom:16px;">✨ ${escapeHtml(t(lang, 'pro_card_settings_cta'))}</button>`}`
+        }
+        <div style="font-size:12px; color:var(--fub-ink-3); text-align:center; margin:12px 0 80px;">${escapeHtml(t(lang, 'catalogue_privacy_note'))}</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderProductSheet(lang) {
+  const d = uiState.productDraft;
+  const url = d.photoId ? uiState.photoUrls[d.photoId] : null;
+  return `
+    <div class="scrim" id="sheet-scrim"></div>
+    <form class="sheet" id="form-product">
+      <div class="grab"></div>
+      <h2 style="margin:0 0 12px; font-size:18px; font-weight:800;">${escapeHtml(t(lang, d.id ? 'catalogue_edit' : 'catalogue_add'))}</h2>
+      <div class="field">
+        <label for="prd-name-in">${escapeHtml(t(lang, 'catalogue_name'))}</label>
+        <input id="prd-name-in" type="text" required maxlength="60" value="${escapeHtml(d.name)}" placeholder="${escapeHtml(t(lang, 'catalogue_name_placeholder'))}" />
+      </div>
+      <div class="field">
+        <label for="prd-price-in">${escapeHtml(t(lang, 'catalogue_price'))}</label>
+        <input id="prd-price-in" type="number" min="0" step="1" inputmode="numeric" value="${escapeHtml(d.price)}" placeholder="e.g. 1200" />
+      </div>
+      <div class="field">
+        <label>${escapeHtml(t(lang, 'catalogue_photo'))}</label>
+        <div style="display:flex; gap:10px; align-items:center;">
+          ${url ? `<div class="prd-thumb" style="background-image:url('${escapeHtml(url)}');"></div>` : `<div class="prd-thumb empty">🛍️</div>`}
+          <label class="btn ghost sm" style="margin:0; cursor:pointer;">
+            📷 ${escapeHtml(t(lang, 'catalogue_pick_photo'))}
+            <input type="file" id="prd-photo-in" accept="image/*" style="display:none;" />
+          </label>
+          ${uiState.cardBusy ? `<span style="font-size:12px; color:var(--fub-ink-3);">…</span>` : ''}
+        </div>
+        <div class="hint">${escapeHtml(t(lang, 'catalogue_photo_hint'))}</div>
+      </div>
+      <div style="display:flex; gap:10px; margin-top:12px;">
+        <button type="button" class="btn ghost" id="btn-close-product-sheet" style="flex:1;">${escapeHtml(t(lang, 'btn_cancel'))}</button>
+        <button type="submit" class="btn primary" style="flex:2;">✓ ${escapeHtml(t(lang, 'btn_save'))}</button>
+      </div>
+    </form>
+  `;
+}
+
+function renderProductPickerSheet(lang) {
+  const list = appState.catalogue || [];
+  ensurePhotoUrls();
+  return `
+    <div class="scrim" id="sheet-scrim"></div>
+    <div class="sheet" id="sheet-product-picker">
+      <div class="grab"></div>
+      <h2 style="margin:0 0 4px; font-size:18px; font-weight:800;">${escapeHtml(t(lang, 'card_send_title'))}</h2>
+      <p style="font-size:12px; color:var(--fub-ink-3); margin:0 0 12px;">${escapeHtml(t(lang, 'card_send_sub'))}</p>
+      ${
+        list.length === 0
+          ? `<div class="stat-empty">${escapeHtml(t(lang, 'card_no_products'))}</div>
+             <button type="button" class="btn primary block" id="btn-picker-open-catalogue">${escapeHtml(t(lang, 'catalogue_title'))}</button>`
+          : list
+              .map(
+                (p) => `
+                  <button type="button" class="prd-card prd-pick-btn" data-id="${escapeHtml(p.id)}" ${uiState.cardBusy ? 'disabled' : ''}>
+                    ${renderProductThumb(p)}
+                    <div style="flex:1; min-width:0; text-align:left;">
+                      <div style="font-weight:700; font-size:15px;">${escapeHtml(p.name)}</div>
+                      <div style="color:var(--fub-emerald-deep); font-weight:700;">${escapeHtml(formatINR(p.price))}</div>
+                    </div>
+                    <span style="color:var(--fub-ink-3);">›</span>
+                  </button>`
+              )
+              .join('')
+      }
+      <button type="button" class="btn flat block" id="btn-close-product-picker" style="margin-top:8px;">${escapeHtml(t(lang, 'btn_cancel'))}</button>
+    </div>
+  `;
+}
+
+/** Render the PNG card for a product, share it (Web Share with files) or download it, and open wa.me. */
+async function sendProductCard(lead, product, lang) {
+  const model = buildProductCardModel(product, appState.settings);
+  let photo = null;
+  try {
+    const blob = product.photoId ? await getPhoto(product.photoId) : null;
+    if (blob) photo = await createImageBitmap(blob);
+  } catch {
+    photo = null;
+  }
+  const canvas = document.createElement('canvas');
+  drawProductCard(canvas, model, photo);
+  if (photo && photo.close) photo.close();
+  const png = await canvasToPngBlob(canvas);
+  const fileName = productCardFileName(product);
+  const file = typeof File !== 'undefined' ? new File([png], fileName, { type: 'image/png' }) : null;
+  const text = buildProductMessage(lead, product, appState.settings);
+
+  let shared = false;
+  if (file && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: product.name, text });
+      shared = true;
+    } catch {
+      shared = false;
+    }
+  }
+  if (!shared) {
+    const url = URL.createObjectURL(png);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    if (lead.source === 'whatsapp' && normalizePhone(lead.handle).length >= 10) {
+      window.open(buildWhatsAppUrl(lead.handle, text), '_blank', 'noopener,noreferrer');
+    } else {
+      await copyTextToClipboard(text);
+    }
+  }
+  appState = logLeadEvent(appState, lead.id, 'contacted', `Sent product card: ${product.name}`);
+  showSnack(t(lang, shared ? 'snack_card_shared' : 'snack_card_downloaded'));
+}
+
 function renderSettingsScreen(lang) {
   const s = appState.settings;
   const archivedCount = appState.leads.filter((l) => Boolean(l.archived)).length;
@@ -829,6 +1021,15 @@ function renderSettingsScreen(lang) {
             <div class="text">
               <div class="t">${escapeHtml(t(lang, 'stats_title'))}</div>
               <div class="s">${escapeHtml(t(lang, 'stats_settings_sub'))}</div>
+            </div>
+            <span style="color:var(--fub-ink-3);">›</span>
+          </div>
+
+          <div class="setting" id="setting-row-catalogue" style="cursor:pointer;">
+            <div class="ico warn">🛍️</div>
+            <div class="text">
+              <div class="t">${escapeHtml(t(lang, 'catalogue_title'))}</div>
+              <div class="s">${escapeHtml(t(lang, 'catalogue_settings_sub', { count: (appState.catalogue || []).length, max: productLimit(s) }))}</div>
             </div>
             <span style="color:var(--fub-ink-3);">›</span>
           </div>
@@ -1070,6 +1271,9 @@ function renderLeadDetailScreen(lang) {
               ${escapeHtml(t(lang, 'qa_share'))}
             </button>
           </div>
+          <button type="button" class="btn ghost block sm" id="btn-send-product-card" style="margin-top:10px;">
+            🛍️ ${escapeHtml(t(lang, 'card_send_btn'))}
+          </button>
           ${(() => {
             const r = resolveTemplate(lead, appState.settings);
             const tp = r.via === 'tag' ? (appState.settings.templates || []).find((x) => x.id === r.templateId) : null;
@@ -1428,6 +1632,8 @@ export function renderApp() {
     mainScreenHtml = renderStatsScreen(lang);
   } else if (uiState.screen === 'templates') {
     mainScreenHtml = renderTemplatesScreen(lang);
+  } else if (uiState.screen === 'catalogue') {
+    mainScreenHtml = renderCatalogueScreen(lang);
   } else {
     mainScreenHtml = renderTodayScreen(lang);
   }
@@ -1441,6 +1647,8 @@ export function renderApp() {
     ${uiState.backupSheetOpen ? renderBackupSheet(lang) : ''}
     ${uiState.profileSheetOpen ? renderProfileSheet(lang) : ''}
     ${uiState.templateSheetOpen ? renderTemplateSheet(lang) : ''}
+    ${uiState.productSheetOpen ? renderProductSheet(lang) : ''}
+    ${uiState.productPickerOpen ? renderProductPickerSheet(lang) : ''}
     ${uiState.snackMessage ? `<div class="snack">${escapeHtml(uiState.snackMessage)}</div>` : ''}
     ${renderTabBar(lang)}
   `;
@@ -1515,6 +1723,149 @@ function bindEvents(lang) {
       renderApp();
     });
   }
+
+  // Catalogue (v3)
+  const rowCatalogue = root.querySelector('#setting-row-catalogue');
+  if (rowCatalogue) {
+    rowCatalogue.addEventListener('click', () => {
+      uiState.screen = 'catalogue';
+      renderApp();
+    });
+  }
+  const catalogueBack = root.querySelector('#btn-catalogue-back');
+  if (catalogueBack) {
+    catalogueBack.addEventListener('click', () => {
+      uiState.screen = 'settings';
+      renderApp();
+    });
+  }
+  const catalogueUpsell = root.querySelector('#btn-catalogue-upsell');
+  if (catalogueUpsell) {
+    catalogueUpsell.addEventListener('click', () => {
+      uiState.proSheetOpen = true;
+      renderApp();
+    });
+  }
+  const newPrdBtn = root.querySelector('#btn-new-product');
+  if (newPrdBtn) {
+    newPrdBtn.addEventListener('click', () => {
+      uiState.productDraft = { id: null, name: '', price: '', photoId: null };
+      uiState.productSheetOpen = true;
+      renderApp();
+    });
+  }
+  root.querySelectorAll('.prd-edit-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const p = (appState.catalogue || []).find((x) => x.id === btn.getAttribute('data-id'));
+      if (!p) return;
+      uiState.productDraft = { id: p.id, name: p.name, price: String(p.price || ''), photoId: p.photoId };
+      uiState.productSheetOpen = true;
+      renderApp();
+    });
+  });
+  root.querySelectorAll('.prd-del-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!window.confirm(t(lang, 'catalogue_delete_confirm'))) return;
+      const id = btn.getAttribute('data-id');
+      const p = (appState.catalogue || []).find((x) => x.id === id);
+      appState = removeProduct(appState, id);
+      if (p && p.photoId) await deletePhoto(p.photoId);
+      renderApp();
+    });
+  });
+  const closePrdSheet = root.querySelector('#btn-close-product-sheet');
+  if (closePrdSheet) {
+    closePrdSheet.addEventListener('click', () => {
+      uiState.productSheetOpen = false;
+      renderApp();
+    });
+  }
+  const prdPhotoIn = root.querySelector('#prd-photo-in');
+  if (prdPhotoIn) {
+    prdPhotoIn.addEventListener('change', async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const nIn = root.querySelector('#prd-name-in');
+      const pIn = root.querySelector('#prd-price-in');
+      if (nIn) uiState.productDraft.name = nIn.value;
+      if (pIn) uiState.productDraft.price = pIn.value;
+      uiState.cardBusy = true;
+      renderApp();
+      try {
+        const id = await importPhoto(file);
+        const blob = await getPhoto(id);
+        if (blob) uiState.photoUrls[id] = URL.createObjectURL(blob);
+        uiState.productDraft.photoId = id;
+      } catch {
+        showSnack(t(lang, 'snack_photo_failed'));
+      }
+      uiState.cardBusy = false;
+      renderApp();
+    });
+  }
+  const prdForm = root.querySelector('#form-product');
+  if (prdForm) {
+    prdForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const nIn = root.querySelector('#prd-name-in');
+      const pIn = root.querySelector('#prd-price-in');
+      const input = { name: nIn ? nIn.value : '', price: pIn ? pIn.value : 0, photoId: uiState.productDraft.photoId };
+      try {
+        appState = uiState.productDraft.id
+          ? updateProduct(appState, uiState.productDraft.id, input)
+          : addProduct(appState, input);
+        uiState.productSheetOpen = false;
+        showSnack(t(lang, 'snack_product_saved'));
+      } catch (err) {
+        if (err && err.code === 'PRO_PRODUCT_LIMIT') {
+          uiState.productSheetOpen = false;
+          uiState.proSheetOpen = true;
+        } else {
+          showSnack(t(lang, 'snack_product_invalid'));
+        }
+      }
+      renderApp();
+    });
+  }
+  const openPickerBtn = root.querySelector('#btn-send-product-card');
+  if (openPickerBtn) {
+    openPickerBtn.addEventListener('click', () => {
+      uiState.productPickerOpen = true;
+      renderApp();
+    });
+  }
+  const closePicker = root.querySelector('#btn-close-product-picker');
+  if (closePicker) {
+    closePicker.addEventListener('click', () => {
+      uiState.productPickerOpen = false;
+      renderApp();
+    });
+  }
+  const pickerOpenCat = root.querySelector('#btn-picker-open-catalogue');
+  if (pickerOpenCat) {
+    pickerOpenCat.addEventListener('click', () => {
+      uiState.productPickerOpen = false;
+      uiState.screen = 'catalogue';
+      renderApp();
+    });
+  }
+  root.querySelectorAll('.prd-pick-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const lead = appState.leads.find((l) => l.id === uiState.selectedLeadId);
+      const product = (appState.catalogue || []).find((x) => x.id === btn.getAttribute('data-id'));
+      if (!lead || !product || uiState.cardBusy) return;
+      uiState.cardBusy = true;
+      renderApp();
+      try {
+        await sendProductCard(lead, product, lang);
+      } catch {
+        showSnack(t(lang, 'snack_card_failed'));
+      }
+      uiState.cardBusy = false;
+      uiState.productPickerOpen = false;
+      renderApp();
+    });
+  });
 
   // Message templates (Pro)
   const rowTemplates = root.querySelector('#setting-row-templates');
@@ -1874,6 +2225,8 @@ function bindEvents(lang) {
     rowClear.addEventListener('click', () => {
       if (!window.confirm(t(lang, 'clear_data_confirm'))) return;
       appState = clearAllData();
+      clearPhotos();
+      uiState.photoUrls = {};
       uiState.tab = 'today';
       uiState.screen = 'onboarding';
       uiState.onbStep = 0;
@@ -2168,6 +2521,8 @@ function bindEvents(lang) {
       uiState.backupSheetOpen = false;
       uiState.profileSheetOpen = false;
       uiState.templateSheetOpen = false;
+      uiState.productSheetOpen = false;
+      uiState.productPickerOpen = false;
       renderApp();
     });
   }
