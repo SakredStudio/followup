@@ -59,7 +59,7 @@ test('catalogue: card model, product message with share line, file name, photo f
   assert.equal(model.height, 1350);
   assert.equal(model.priceText, '₹1,200');
   assert.equal(model.seller, 'Anjali · Sweet Tooth');
-  assert.ok(model.shareLine.includes('sakredstudio.github.io/followup'));
+  assert.ok(model.shareLine.includes('followup.sakredstudio.ca'));
   assert.equal(model.photoId, 'ph_9');
 
   const msg = buildProductMessage({ name: 'Priya Sharma', interest: 'cake' }, product, settings);

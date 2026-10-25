@@ -12,7 +12,7 @@ Vanilla JS PWA, no build step, no dependencies, ES modules, `node --test`. Every
 - **Today Screen**: Emerald hero card with today's follow-up count, Overdue & Upcoming (next 7 days) buckets, priority star (`★`) sorting, and missed-days catch-up banner.
 - **Quick Add Lead**: Save a lead in under 10 seconds with 3-way Source segmented control (`WhatsApp / Instagram / Other`), 1-tap delay chips (`Tomorrow / 2d / 1w / 1m`), tags, and priority star.
 - **Lead Detail & 1-Tap Deep Links**:
-  - **WhatsApp**: Opens `https://wa.me/91XXXXXXXXXX?text=...` with a pre-filled follow-up message (80-char interest truncation + `— sent with FollowUp Buddy · https://sakredstudio.github.io/followup`).
+  - **WhatsApp**: Opens `https://wa.me/91XXXXXXXXXX?text=...` with a pre-filled follow-up message (80-char interest truncation + `— sent with FollowUp Buddy · https://followup.sakredstudio.ca`).
   - **Instagram**: Copies the follow-up message to clipboard and opens `https://instagram.com/<handle>`.
   - **History Timeline**: `created`, `contacted`, `replied`, `rescheduled`, `status_change` and custom `note` events (`contacted` / `replied` / `note` touch `lastContactedAt`).
   - **Outcomes**: `Replied`, `No reply`, `Converted` (with optional ₹ order value), `Not interested`, `Lost`.
@@ -62,7 +62,7 @@ Tests: `tests/*.test.mjs` — one per pure module (`notify`, `pipeline`, `stats`
 
 ## Deploy (GitHub Pages)
 
-Live at https://sakredstudio.github.io/followup/. The public repo `SakredStudio/followup` is a deploy mirror of this folder; the monorepo is the source of truth. From the sakred-os root, on master:
+Live at https://followup.sakredstudio.ca/. The public repo `SakredStudio/followup` is a deploy mirror of this folder; the monorepo is the source of truth. From the sakred-os root, on master:
 
 ```
 git subtree push --prefix=projects/followup-buddy/app https://github.com/SakredStudio/followup.git main

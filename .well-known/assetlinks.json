@@ -1,0 +1,15 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.sakredstudio.followupbuddy",
+      "sha256_cert_fingerprints": [
+        "E2:FD:7D:9D:A2:66:95:89:9A:B7:78:A7:CA:86:4E:2F:8B:59:34:C3:1C:F5:B7:39:D5:1F:CC:9D:90:67:A3:37",
+        "8C:61:3E:80:9C:90:61:D9:4B:FB:0C:C9:87:3E:B8:2B:B8:3D:94:E7:42:8E:4D:CF:4E:0B:00:7F:E3:75:6C:1C"
+      ]
+    }
+  }
+]
