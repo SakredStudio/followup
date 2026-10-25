@@ -1,5 +1,5 @@
 // FollowUp Buddy — Main Application Controller (P0–P5: Onboarding, Today, AddLeadSheet, LeadDetail, AllLeadsScreen, Settings, PWA)
-import { registerTranslations, t } from './lib/i18n.js';
+import { registerTranslations, t, normalizeLang, LANG_LABELS } from './lib/i18n.js';
 import { isPlayBillingAvailable, getProPrices, activeProPlan, buyPro, MANAGE_SUBSCRIPTIONS_URL } from './lib/billing.js';
 import { initials, avatarColor, relTime, relPastTime, shortDate, formatHeaderDate, inr as formatINR } from './lib/format.js';
 import {
@@ -161,13 +161,9 @@ function resetDraft() {
 }
 
 async function loadDictionaries() {
-  const [enRes, hiRes] = await Promise.all([
-    fetch('./i18n/en.json'),
-    fetch('./i18n/hi.json')
-  ]);
-  const [enDict, hiDict] = await Promise.all([enRes.json(), hiRes.json()]);
-  registerTranslations('en', enDict);
-  registerTranslations('hi', hiDict);
+  const langs = ['en', 'hi', 'hinglish'];
+  const dicts = await Promise.all(langs.map((l) => fetch(`./i18n/${l}.json`).then((r) => r.json())));
+  langs.forEach((l, i) => registerTranslations(l, dicts[i]));
 }
 
 function hourLabel(h) {
@@ -901,11 +897,12 @@ function renderSettingsScreen(lang) {
             <div class="ico cobalt">🌐</div>
             <div class="text">
               <div class="t">${escapeHtml(t(lang, 'settings_language'))}</div>
-              <div class="s">${s.language === 'en' ? 'English' : 'हिन्दी'}</div>
+              <div class="s">${escapeHtml(LANG_LABELS[s.language] || 'English')}</div>
             </div>
-            <div class="segmented" style="width:140px;">
+            <div class="segmented" style="width:170px;">
               <button type="button" class="lang-seg-btn ${s.language === 'en' ? 'on' : ''}" data-lang="en">EN</button>
               <button type="button" class="lang-seg-btn ${s.language === 'hi' ? 'on' : ''}" data-lang="hi">हि</button>
+              <button type="button" class="lang-seg-btn ${s.language === 'hinglish' ? 'on' : ''}" data-lang="hinglish">Hing</button>
             </div>
           </div>
 
@@ -1763,8 +1760,7 @@ function bindEvents(lang) {
 
   root.querySelectorAll('.lang-seg-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const nextLang = btn.getAttribute('data-lang') === 'hi' ? 'hi' : 'en';
-      appState = updateSettings(appState, { language: nextLang });
+      appState = updateSettings(appState, { language: normalizeLang(btn.getAttribute('data-lang')) });
       renderApp();
     });
   });
