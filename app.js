@@ -30,9 +30,23 @@ import {
   buildLeadSummaryText
 } from './lib/channels.js';
 import { normalizePhone } from './lib/phone.js';
+import {
+  canNotify,
+  nextReminderAt,
+  buildDigestSnapshot,
+  buildDigestText,
+  writeDigestSnapshot,
+  registerPeriodicDigest,
+  unregisterPeriodicDigest,
+  scheduleInAppReminder,
+  showReminderNotification
+} from './lib/notify.js';
 
 let appState = null;
 let snackTimer = null;
+let digestTimer = null;
+let cancelReminder = null;
+let swRegistration = null;
 let uiState = {
   tab: 'today', // 'today' | 'all' | 'settings'
   screen: 'today', // 'onboarding' | 'today' | 'detail' | 'all' | 'settings'
@@ -49,6 +63,7 @@ let uiState = {
   convertedSheetOpen: false,
   backupSheetOpen: false,
   profileSheetOpen: false,
+  notifyCap: null, // result of canNotify()
   convertedValueDraft: '',
   noteDraft: '',
   snackMessage: null,
@@ -145,6 +160,53 @@ async function loadDictionaries() {
   const [enDict, hiDict] = await Promise.all([enRes.json(), hiRes.json()]);
   registerTranslations('en', enDict);
   registerTranslations('hi', hiDict);
+}
+
+function hourLabel(h) {
+  return `${String(h).padStart(2, '0')}:00`;
+}
+
+function notifyModeText(lang) {
+  const cap = uiState.notifyCap;
+  if (!cap || !cap.supported || cap.mode === 'none') return t(lang, 'notify_mode_none');
+  if (cap.permission === 'denied') return t(lang, 'notify_permission_denied');
+  return t(lang, cap.mode === 'periodic' ? 'notify_mode_periodic' : 'notify_mode_open');
+}
+
+/** Mirror today's counts into the Cache API for sw.js (debounced; runs after every render). */
+function scheduleDigestWrite() {
+  if (!appState || typeof caches === 'undefined') return;
+  if (digestTimer) clearTimeout(digestTimer);
+  digestTimer = setTimeout(() => {
+    const buckets = categorize(appState.leads, Date.now());
+    const snap = { ...buildDigestSnapshot(buckets, appState.settings.language), quiet: appState.settings.quietHours };
+    writeDigestSnapshot(snap);
+  }, 400);
+}
+
+/** Arm (or disarm) the in-app 9 AM reminder and the periodic background digest. */
+function armReminders() {
+  if (cancelReminder) {
+    cancelReminder();
+    cancelReminder = null;
+  }
+  if (!appState || !appState.settings.reminderEnabled) {
+    if (swRegistration) unregisterPeriodicDigest(swRegistration);
+    return;
+  }
+  if (swRegistration) registerPeriodicDigest(swRegistration);
+  const fire = () => {
+    const buckets = categorize(appState.leads, Date.now());
+    const text = buildDigestText(buildDigestSnapshot(buckets, appState.settings.language));
+    if (text) showReminderNotification(text, swRegistration);
+    armReminders(); // next day
+  };
+  cancelReminder = scheduleInAppReminder({
+    now: Date.now(),
+    reminderHour: appState.settings.reminderHour,
+    quiet: appState.settings.quietHours,
+    onFire: fire
+  });
 }
 
 function applyThemeAndDensity() {
@@ -559,11 +621,28 @@ function renderSettingsScreen(lang) {
           <div class="setting">
             <div class="ico">🔔</div>
             <div class="text">
-              <div class="t">${escapeHtml(t(lang, 'settings_reminders'))}</div>
-              <div class="s">${escapeHtml(t(lang, 'settings_reminders_sub'))}</div>
+              <div class="t">${escapeHtml(t(lang, 'settings_reminders'))} · ${escapeHtml(hourLabel(s.reminderHour))}</div>
+              <div class="s">${escapeHtml(notifyModeText(lang))}</div>
             </div>
             <button type="button" id="btn-toggle-reminders" aria-label="${escapeHtml(t(lang, 'settings_reminders'))}" aria-pressed="${s.reminderEnabled ? 'true' : 'false'}"
               class="tog ${s.reminderEnabled ? 'on' : ''}" style="border:none;"></button>
+          </div>
+
+          <div class="setting">
+            <div class="ico">🌙</div>
+            <div class="text">
+              <div class="t">${escapeHtml(t(lang, 'settings_quiet_hours'))}</div>
+              <div class="s">${escapeHtml(t(lang, 'settings_quiet_hours_sub', { start: hourLabel(s.quietHours.start), end: hourLabel(s.quietHours.end) }))}</div>
+            </div>
+            <div style="display:flex; gap:4px; align-items:center;">
+              <select id="sel-quiet-start" aria-label="${escapeHtml(t(lang, 'quiet_from'))}" class="hour-select">
+                ${Array.from({ length: 24 }, (_, h) => `<option value="${h}" ${h === s.quietHours.start ? 'selected' : ''}>${hourLabel(h)}</option>`).join('')}
+              </select>
+              <span style="color:var(--fub-ink-3); font-size:12px;">–</span>
+              <select id="sel-quiet-end" aria-label="${escapeHtml(t(lang, 'quiet_to'))}" class="hour-select">
+                ${Array.from({ length: 24 }, (_, h) => `<option value="${h}" ${h === s.quietHours.end ? 'selected' : ''}>${hourLabel(h)}</option>`).join('')}
+              </select>
+            </div>
           </div>
 
           <div class="setting">
@@ -1093,6 +1172,7 @@ export function renderApp() {
     ${renderTabBar(lang)}
   `;
   bindEvents(lang);
+  scheduleDigestWrite();
 }
 
 function syncDraftInputs(root) {
@@ -1280,8 +1360,22 @@ function bindEvents(lang) {
         Notification.requestPermission().catch(() => {});
       }
       appState = updateSettings(appState, { reminderEnabled: next });
+      armReminders();
       renderApp();
     });
+  }
+
+  for (const edge of ['start', 'end']) {
+    const sel = root.querySelector(`#sel-quiet-${edge}`);
+    if (sel) {
+      sel.addEventListener('change', () => {
+        appState = updateSettings(appState, {
+          quietHours: { ...appState.settings.quietHours, [edge]: Number(sel.value) }
+        });
+        armReminders();
+        renderApp();
+      });
+    }
   }
 
   const togMorn = root.querySelector('#btn-toggle-morning');
@@ -1813,8 +1907,20 @@ export async function initApp() {
     /* billing is optional */
   }
   if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    try {
+      swRegistration = await navigator.serviceWorker.register('./sw.js');
+    } catch {
+      swRegistration = null;
+    }
   }
+  // Reminders: in-app timer while open; Periodic Background Sync when installed (TWA / Chromium).
+  try {
+    uiState.notifyCap = await canNotify({ registration: swRegistration });
+  } catch {
+    uiState.notifyCap = null;
+  }
+  armReminders();
+  if (uiState.screen === 'settings') renderApp();
 }
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {

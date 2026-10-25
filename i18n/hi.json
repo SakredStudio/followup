@@ -90,7 +90,7 @@
   "settings_default_delay": "डिफ़ॉल्ट फ़ॉलो-अप समय",
   "settings_default_delay_sub": "नई लीड जोड़ते समय",
   "settings_reminders": "रिमाइंडर",
-  "settings_reminders_sub": "ऐप खुला होने पर बैज + नोटिफ़िकेशन",
+  "settings_reminders_sub": "आज किन लीड्स को फ़ॉलो-अप करना है, रोज़ की सूची",
   "settings_morning_summary": "सुबह का सारांश",
   "settings_morning_summary_sub": "ऐप खोलने पर \"आज 5 लीड फ़ॉलो-अप करने हैं\"",
   "settings_group_app": "ऐप",
@@ -161,5 +161,13 @@
   "pro_manage": "सब्सक्रिप्शन मैनेज करें",
   "purchase_cancelled": "खरीद रद्द की गई।",
   "purchase_failed": "खरीद पूरी नहीं हुई। फिर कोशिश करें।",
-  "no_purchase_found": "इस Google अकाउंट पर कोई सक्रिय Pro सब्सक्रिप्शन नहीं मिला।"
+  "no_purchase_found": "इस Google अकाउंट पर कोई सक्रिय Pro सब्सक्रिप्शन नहीं मिला।",
+  "notify_mode_periodic": "इस समय रोज़ रिमाइंडर, ऐप बंद होने पर भी (Google Play से इंस्टॉल किया हो)",
+  "notify_mode_open": "रिमाइंडर सिर्फ़ तब दिखेगा जब ऐप इस ब्राउज़र में खुला हो। रोज़ के असली अलार्म के लिए Google Play से इंस्टॉल करें।",
+  "notify_mode_none": "यह ब्राउज़र नोटिफ़िकेशन नहीं दिखा सकता",
+  "notify_permission_denied": "नोटिफ़िकेशन बंद हैं — फ़ोन की सेटिंग्स में अनुमति दें",
+  "settings_quiet_hours": "शांत समय",
+  "settings_quiet_hours_sub": "{start} से {end} के बीच कोई रिमाइंडर नहीं",
+  "quiet_from": "शांत समय से",
+  "quiet_to": "शांत समय तक"
 }

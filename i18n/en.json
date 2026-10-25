@@ -90,7 +90,7 @@
   "settings_default_delay": "Default follow-up delay",
   "settings_default_delay_sub": "When you add a new lead",
   "settings_reminders": "Reminders",
-  "settings_reminders_sub": "Badge + notification while the app is open",
+  "settings_reminders_sub": "Daily list of leads to follow up",
   "settings_morning_summary": "Morning summary",
   "settings_morning_summary_sub": "\"You have 5 leads to follow up today\" when you open the app",
   "settings_group_app": "App",
@@ -161,5 +161,13 @@
   "pro_manage": "Manage subscription",
   "purchase_cancelled": "Purchase cancelled.",
   "purchase_failed": "Purchase did not complete. Please try again.",
-  "no_purchase_found": "No active Pro subscription found for this Google account."
+  "no_purchase_found": "No active Pro subscription found for this Google account.",
+  "notify_mode_periodic": "Daily reminder at this hour, even when the app is closed (installed from Google Play)",
+  "notify_mode_open": "Reminder shows only while the app is open in this browser. Install from Google Play for a real daily alarm.",
+  "notify_mode_none": "This browser cannot show notifications",
+  "notify_permission_denied": "Notifications are blocked — allow them in your phone settings",
+  "settings_quiet_hours": "Quiet hours",
+  "settings_quiet_hours_sub": "No reminders between {start} and {end}",
+  "quiet_from": "Quiet from",
+  "quiet_to": "Quiet until"
 }

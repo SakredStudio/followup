@@ -884,3 +884,16 @@ button, input, select, textarea, a.tap-target {
   font-weight: 700;
   margin: 14px 0 6px;
 }
+
+/* v2: hour pickers in Settings (quiet hours) */
+.hour-select {
+  min-height: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--fub-line);
+  background: var(--fub-card-2);
+  color: var(--fub-ink);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0 4px;
+}
