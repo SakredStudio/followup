@@ -33,6 +33,7 @@ import { normalizePhone } from './lib/phone.js';
 import { STAGES, groupByStage, deriveStage } from './lib/pipeline.js';
 import { computeStats } from './lib/stats.js';
 import { hasSharePayload, readSharePayload, parseSharedPayload } from './lib/share-target.js';
+import { snoozePresets, pickDateAt } from './lib/snooze.js';
 import { MAX_TEMPLATES, buildMessageForLead, resolveTemplate, saveTemplate, deleteTemplate, assignTagTemplate } from './lib/templates.js';
 import {
   canNotify,
@@ -1191,6 +1192,26 @@ function renderRescheduleSheet(lang) {
           )
           .join('')}
       </div>
+      <div class="field">
+        <label>${escapeHtml(t(lang, 'snooze_presets_label'))}</label>
+        <div class="chip-row">
+          ${snoozePresets(Date.now(), appState.settings.reminderHour)
+            .map(
+              (p) => `
+                <button type="button" class="chip-pick snooze-preset-btn" data-at="${p.at}">
+                  ${escapeHtml(t(lang, `snooze_${p.id}`))} · ${escapeHtml(shortDate(p.at, lang))}
+                </button>`
+            )
+            .join('')}
+        </div>
+      </div>
+      <div class="field">
+        <label for="snooze-date-in">${escapeHtml(t(lang, 'snooze_pick_date'))}</label>
+        <div style="display:flex; gap:8px;">
+          <input type="date" id="snooze-date-in" style="flex:1;" aria-label="${escapeHtml(t(lang, 'snooze_pick_date'))}" />
+          <button type="button" class="btn primary sm" id="btn-snooze-date">✓ ${escapeHtml(t(lang, 'btn_save'))}</button>
+        </div>
+      </div>
       <button type="button" class="btn ghost block" id="btn-close-reschedule">${escapeHtml(t(lang, 'btn_cancel'))}</button>
     </div>
   `;
@@ -1979,6 +2000,30 @@ function bindEvents(lang) {
       renderApp();
     });
   });
+
+  const applySnoozeAt = (atMs) => {
+    if (!currentLead || !atMs) return;
+    appState = rescheduleFollowUp(appState, currentLead.id, atMs);
+    uiState.rescheduleSheetOpen = false;
+    showSnack(t(lang, 'snack_rescheduled', { relTime: relTime(atMs, Date.now(), lang) }));
+    renderApp();
+  };
+  root.querySelectorAll('.snooze-preset-btn').forEach((btn) => {
+    btn.addEventListener('click', () => applySnoozeAt(Number(btn.getAttribute('data-at'))));
+  });
+  const snoozeDateBtn = root.querySelector('#btn-snooze-date');
+  if (snoozeDateBtn) {
+    snoozeDateBtn.addEventListener('click', () => {
+      const inp = root.querySelector('#snooze-date-in');
+      const atMs = pickDateAt(inp ? inp.value : '', Date.now(), appState.settings.reminderHour);
+      if (!atMs) {
+        showSnack(t(lang, 'snack_snooze_bad_date'));
+        renderApp();
+        return;
+      }
+      applySnoozeAt(atMs);
+    });
+  }
 
   const closeRescheduleBtn = root.querySelector('#btn-close-reschedule');
   if (closeRescheduleBtn) {

@@ -215,5 +215,11 @@
   "snack_template_invalid": "Message cannot be empty (max 300 characters)",
   "btn_edit": "Edit",
   "btn_delete": "Delete",
-  "snack_share_prefilled": "Filled from what you shared — check and save"
+  "snack_share_prefilled": "Filled from what you shared — check and save",
+  "snooze_presets_label": "Or snooze until",
+  "snooze_tomorrow": "Tomorrow 9 AM",
+  "snooze_monday": "Monday",
+  "snooze_after_diwali": "After Diwali",
+  "snooze_pick_date": "Pick a date",
+  "snack_snooze_bad_date": "Pick a date after today"
 }

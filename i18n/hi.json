@@ -215,5 +215,11 @@
   "snack_template_invalid": "मैसेज खाली नहीं हो सकता (अधिकतम 300 अक्षर)",
   "btn_edit": "बदलें",
   "btn_delete": "हटाएँ",
-  "snack_share_prefilled": "आपने जो शेयर किया उससे भर दिया — जाँचें और सेव करें"
+  "snack_share_prefilled": "आपने जो शेयर किया उससे भर दिया — जाँचें और सेव करें",
+  "snooze_presets_label": "या इस समय तक टालें",
+  "snooze_tomorrow": "कल सुबह 9 बजे",
+  "snooze_monday": "सोमवार",
+  "snooze_after_diwali": "दिवाली के बाद",
+  "snooze_pick_date": "तारीख़ चुनें",
+  "snack_snooze_bad_date": "आज के बाद की तारीख़ चुनें"
 }
