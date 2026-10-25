@@ -213,7 +213,7 @@ export function renderLeadRow(lead, { showFollowUp = true, now = Date.now(), lan
       <div class="lead-right">
         ${
           showFollowUp && lead.nextFollowUpAt
-            ? `<div class="lead-time">${escapeHtml(relTime(lead.nextFollowUpAt, now))}</div>`
+            ? `<div class="lead-time">${escapeHtml(relTime(lead.nextFollowUpAt, now, lang))}</div>`
             : !showFollowUp
               ? renderStatusPill(lead.status, lang)
               : ''
@@ -309,7 +309,7 @@ function renderTodayScreen(lang) {
       <div class="fub-bar">
         <div style="flex:1;">
           <h1>${escapeHtml(t(lang, 'today_title'))}</h1>
-          <div class="sub">${escapeHtml(formatHeaderDate(now))}</div>
+          <div class="sub">${escapeHtml(formatHeaderDate(now, lang))}</div>
         </div>
         <button type="button" class="btn icon flat" id="btn-today-search" aria-label="${escapeHtml(t(lang, 'search_placeholder'))}">🔍</button>
       </div>
@@ -783,10 +783,10 @@ function renderLeadDetailScreen(lang) {
             </div>
             <div style="flex:1;">
               <div style="font-weight:700; color:#5e3d02;" id="detail-followup-rel">
-                ${escapeHtml(lead.nextFollowUpAt ? relTime(lead.nextFollowUpAt, now) : t(lang, 'no_followup_set'))}
+                ${escapeHtml(lead.nextFollowUpAt ? relTime(lead.nextFollowUpAt, now, lang) : t(lang, 'no_followup_set'))}
               </div>
               <div style="font-size:12px; color:#8A5A04;">
-                ${escapeHtml(lead.nextFollowUpAt ? shortDate(lead.nextFollowUpAt) : t(lang, 'tap_to_schedule'))}
+                ${escapeHtml(lead.nextFollowUpAt ? shortDate(lead.nextFollowUpAt, lang) : t(lang, 'tap_to_schedule'))}
               </div>
             </div>
             <button type="button" class="btn sm warn" id="btn-open-reschedule">
@@ -810,7 +810,7 @@ function renderLeadDetailScreen(lang) {
                   <div class="row">
                     <div class="dot ${i === 0 ? '' : 'muted'}"></div>
                     <div>
-                      <div class="when">${escapeHtml(relPastTime(ev.createdAt, now))} · ${escapeHtml(shortDate(ev.createdAt))}</div>
+                      <div class="when">${escapeHtml(relPastTime(ev.createdAt, now, lang))} · ${escapeHtml(shortDate(ev.createdAt, lang))}</div>
                       <div class="what">${escapeHtml(ev.body)}</div>
                     </div>
                   </div>
@@ -1529,7 +1529,7 @@ function bindEvents(lang) {
       appState = rescheduleFollowUp(appState, currentLead.id, days);
       uiState.rescheduleSheetOpen = false;
       const updated = appState.leads.find((l) => l.id === currentLead.id);
-      showSnack(t(lang, 'snack_rescheduled', { relTime: relTime(updated ? updated.nextFollowUpAt : Date.now()) }));
+      showSnack(t(lang, 'snack_rescheduled', { relTime: relTime(updated ? updated.nextFollowUpAt : Date.now(), Date.now(), lang) }));
       renderApp();
     });
   });
