@@ -24,3 +24,13 @@ node --test projects/followup-buddy/app/tests/*.test.mjs
 # Serve static PWA
 npx serve projects/followup-buddy/app
 ```
+
+## Deploy (GitHub Pages)
+
+Live at https://sakredstudio.github.io/followup/. The public repo `SakredStudio/followup` is a deploy mirror of this folder; the monorepo is the source of truth. From the sakred-os root, on master:
+
+```
+git subtree push --prefix=projects/followup-buddy/app https://github.com/SakredStudio/followup.git main
+```
+
+The workflow in `.github/workflows/deploy.yml` runs the tests and publishes the folder. Bump `CACHE_NAME` in `sw.js` first.
