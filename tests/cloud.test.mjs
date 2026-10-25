@@ -17,7 +17,12 @@ import {
   stateUpdatedAt,
   base64ToBytes
 } from '../lib/cloud.js';
-import { handleRequest, rateLimited } from '../../worker/src/index.js';
+import { existsSync } from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+// The worker lives outside app/ (monorepo only); the deploy mirror ships app/ alone, so skip there.
+const WORKER_PATH = fileURLToPath(new URL('../../worker/src/index.js', import.meta.url));
+const worker = existsSync(WORKER_PATH) ? await import(pathToFileURL(WORKER_PATH).href) : null;
+const { handleRequest, rateLimited } = worker || {};
 
 test('cloud: encrypt → decrypt round trip, wrong passphrase fails, key export/import', async () => {
   const value = { leads: [{ id: 'l1', name: 'Priya', updatedAt: 5 }], settings: { language: 'hi' } };
@@ -88,7 +93,7 @@ function fakeD1() {
   };
 }
 
-test('cloud worker: PUT/GET/DELETE with a fake D1, CORS, cap, conflict, rate limit', async () => {
+test('cloud worker: PUT/GET/DELETE with a fake D1, CORS, cap, conflict, rate limit', { skip: !worker && 'worker source not present (deploy mirror)' }, async () => {
   const DB = fakeD1();
   const env = { DB, ALLOWED_ORIGIN: 'https://sakredstudio.github.io', MAX_BLOB_BYTES: '2097152', RATE_LIMIT_PER_MIN: '30' };
   const id = newVaultId();
