@@ -897,3 +897,75 @@ button, input, select, textarea, a.tap-target {
   font-weight: 600;
   padding: 0 4px;
 }
+
+/* v2: pipeline swimlanes (scroll inside the container; page never scrolls sideways) */
+.pipeline {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0 10px;
+  margin: 0 -16px;
+  padding-left: 16px;
+  padding-right: 16px;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+}
+.pipeline::-webkit-scrollbar { height: 4px; }
+.pipeline::-webkit-scrollbar-thumb { background: var(--fub-line); border-radius: 999px; }
+.lane {
+  flex: 0 0 236px;
+  width: 236px;
+  max-height: calc(100dvh - 260px);
+  overflow-y: auto;
+  background: var(--fub-card-2);
+  border-radius: 14px;
+  padding: 8px;
+  scroll-snap-align: start;
+}
+.lane-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--fub-ink-2);
+  padding: 4px 6px 8px;
+  position: sticky;
+  top: 0;
+  background: var(--fub-card-2);
+  z-index: 1;
+}
+.lane-head .count {
+  background: var(--fub-card);
+  color: var(--fub-ink-3);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+}
+.lane-new .lane-head { color: var(--fub-cobalt); }
+.lane-contacted .lane-head { color: var(--fub-emerald); }
+.lane-interested .lane-head { color: #8A5A04; }
+.lane-ordered .lane-head { color: #2A6F3F; }
+.lane-lost .lane-head { color: var(--fub-terracotta); }
+.lane-card.lead {
+  display: block;
+  width: 100%;
+  margin: 0 0 8px;
+  padding: 10px;
+  min-height: 44px;
+  text-align: left;
+}
+.lane-empty {
+  font-size: 12px;
+  color: var(--fub-ink-4);
+  text-align: center;
+  padding: 18px 6px;
+}
+.statusPill.stage-new        { color: var(--fub-cobalt);     background: var(--fub-cobalt-soft); }
+.statusPill.stage-contacted  { color: var(--fub-emerald);    background: var(--fub-emerald-soft); }
+.statusPill.stage-interested { color: #8A5A04;               background: var(--fub-marigold-soft); }
+.statusPill.stage-ordered    { color: #2A6F3F;               background: #D6EBDD; }
+.statusPill.stage-lost       { color: var(--fub-terracotta); background: var(--fub-terracotta-soft); }

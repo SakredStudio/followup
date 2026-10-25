@@ -169,5 +169,17 @@
   "settings_quiet_hours": "शांत समय",
   "settings_quiet_hours_sub": "{start} से {end} के बीच कोई रिमाइंडर नहीं",
   "quiet_from": "शांत समय से",
-  "quiet_to": "शांत समय तक"
+  "quiet_to": "शांत समय तक",
+  "view_list": "सूची",
+  "view_pipeline": "पाइपलाइन",
+  "stage_new": "नया",
+  "stage_contacted": "संपर्क किया",
+  "stage_interested": "रुचि है",
+  "stage_ordered": "ऑर्डर मिला",
+  "stage_lost": "छूट गया",
+  "pipeline_lane_empty": "यहाँ कुछ नहीं",
+  "pipeline_hint": "नतीजा दर्ज करने पर लीड आगे बढ़ती है: मैसेज भेजा → संपर्क किया, जवाब आया → रुचि है, ऑर्डर → ऑर्डर मिला।",
+  "outcome_replied": "जवाब आया",
+  "outcome_no_reply": "जवाब नहीं",
+  "snack_replied": "नोट किया · लीड ने जवाब दिया"
 }

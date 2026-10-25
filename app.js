@@ -30,6 +30,7 @@ import {
   buildLeadSummaryText
 } from './lib/channels.js';
 import { normalizePhone } from './lib/phone.js';
+import { STAGES, groupByStage, deriveStage } from './lib/pipeline.js';
 import {
   canNotify,
   nextReminderAt,
@@ -69,6 +70,7 @@ let uiState = {
   snackMessage: null,
   catchUp: null,
   // All Leads filters
+  allView: 'list', // 'list' | 'pipeline'
   searchQuery: '',
   statusFilter: 'all',
   sourceFilter: 'all',
@@ -237,6 +239,58 @@ function renderStatusPill(status, lang) {
   const cls = status === 'not_interested' ? 'not' : status;
   const key = `status_${status}`;
   return `<span class="statusPill ${escapeHtml(cls)}">${escapeHtml(t(lang, key))}</span>`;
+}
+
+function renderStagePill(stage, lang) {
+  return `<span class="statusPill stage-${escapeHtml(stage)}">${escapeHtml(t(lang, `stage_${stage}`))}</span>`;
+}
+
+function renderPipelineCard(lead, lang, now) {
+  return `
+    <button type="button" class="lane-card lead ${lead.priority ? 'priority' : ''}" data-lead-id="${escapeHtml(lead.id)}">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <div class="avatar" style="background:${avatarColor(lead.name)}; width:28px; height:28px; font-size:11px;">${escapeHtml(initials(lead.name))}</div>
+        <div class="lead-name" style="flex:1; min-width:0; font-size:14px;">${escapeHtml(lead.name)}</div>
+        ${lead.priority ? '<span style="color:var(--fub-marigold); font-size:12px;">★</span>' : ''}
+      </div>
+      <div class="lead-notes" style="margin-top:4px;">${escapeHtml(lead.interest)}</div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px; gap:6px;">
+        ${renderChannelChip(lead.source, lang)}
+        <span class="lead-time" style="font-size:11px;">${escapeHtml(
+          lead.status === 'active' && lead.nextFollowUpAt
+            ? relTime(lead.nextFollowUpAt, now, lang)
+            : lead.convertedValue
+              ? formatINR(lead.convertedValue)
+              : relPastTime(lead.updatedAt || lead.createdAt, now, lang)
+        )}</span>
+      </div>
+    </button>
+  `;
+}
+
+function renderPipeline(lang) {
+  const now = Date.now();
+  const lanes = groupByStage(appState.leads, appState.events);
+  return `
+    <div class="pipeline" aria-label="${escapeHtml(t(lang, 'view_pipeline'))}">
+      ${STAGES.map(
+        (stage) => `
+          <section class="lane lane-${stage}">
+            <header class="lane-head">
+              <span>${escapeHtml(t(lang, `stage_${stage}`))}</span>
+              <span class="count">${lanes[stage].length}</span>
+            </header>
+            ${
+              lanes[stage].length === 0
+                ? `<div class="lane-empty">${escapeHtml(t(lang, 'pipeline_lane_empty'))}</div>`
+                : lanes[stage].map((l) => renderPipelineCard(l, lang, now)).join('')
+            }
+          </section>
+        `
+      ).join('')}
+    </div>
+    <div class="hint" style="font-size:12px; color:var(--fub-ink-3); text-align:center; margin:8px 0 80px;">${escapeHtml(t(lang, 'pipeline_hint'))}</div>
+  `;
 }
 
 export function renderLeadRow(lead, { showFollowUp = true, now = Date.now(), lang = 'en' } = {}) {
@@ -493,6 +547,11 @@ function renderAllLeadsScreen(lang) {
       </div>
 
       <div class="fub-content">
+        <div class="segmented" style="margin-bottom:10px;">
+          <button type="button" class="all-view-btn ${uiState.allView === 'list' ? 'on' : ''}" data-view="list">☰ ${escapeHtml(t(lang, 'view_list'))}</button>
+          <button type="button" class="all-view-btn ${uiState.allView === 'pipeline' ? 'on' : ''}" data-view="pipeline">▥ ${escapeHtml(t(lang, 'view_pipeline'))}</button>
+        </div>
+        ${uiState.allView === 'pipeline' ? renderPipeline(lang) : `
         <div class="search">
           <span aria-hidden="true">🔍</span>
           <input type="text" id="input-all-search" aria-label="${escapeHtml(t(lang, 'search_placeholder'))}"
@@ -556,6 +615,7 @@ function renderAllLeadsScreen(lang) {
                </div>`
             : ''
         }
+        `}
       </div>
 
       <button type="button" class="fab" id="btn-fab-add" aria-label="${escapeHtml(t(lang, 'fab_add_lead'))}">+</button>
@@ -811,6 +871,7 @@ function renderLeadDetailScreen(lang) {
               <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
                 ${renderChannelChip(lead.source, lang)}
                 ${renderStatusPill(lead.status, lang)}
+                ${renderStagePill(deriveStage(lead, appState.events), lang)}
                 ${lead.priority ? `<span class="chip warn">★ ${escapeHtml(t(lang, 'chip_priority'))}</span>` : ''}
                 ${lead.convertedValue ? `<span class="chip tag">${escapeHtml(formatINR(lead.convertedValue))}</span>` : ''}
               </div>
@@ -900,6 +961,14 @@ function renderLeadDetailScreen(lang) {
 
           <div class="fub-section">
             <h2>${escapeHtml(t(lang, 'section_outcome'))}</h2>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
+            <button type="button" class="btn flat sm" id="btn-outcome-replied" style="color:var(--fub-emerald-deep);">
+              💬 ${escapeHtml(t(lang, 'outcome_replied'))}
+            </button>
+            <button type="button" class="btn flat sm" id="btn-outcome-no-reply">
+              ⏳ ${escapeHtml(t(lang, 'outcome_no_reply'))}
+            </button>
           </div>
           <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:24px;">
             <button type="button" class="btn primary sm" id="btn-outcome-converted">
@@ -1685,6 +1754,31 @@ function bindEvents(lang) {
       renderApp();
     });
   }
+
+  const btnReplied = root.querySelector('#btn-outcome-replied');
+  if (btnReplied && currentLead) {
+    btnReplied.addEventListener('click', () => {
+      appState = logLeadEvent(appState, currentLead.id, 'replied', 'Lead replied');
+      showSnack(t(lang, 'snack_replied'));
+      renderApp();
+    });
+  }
+
+  const btnNoReply = root.querySelector('#btn-outcome-no-reply');
+  if (btnNoReply && currentLead) {
+    btnNoReply.addEventListener('click', () => {
+      appState = logLeadEvent(appState, currentLead.id, 'note', 'No reply yet');
+      uiState.rescheduleSheetOpen = true;
+      renderApp();
+    });
+  }
+
+  root.querySelectorAll('.all-view-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      uiState.allView = btn.getAttribute('data-view') === 'pipeline' ? 'pipeline' : 'list';
+      renderApp();
+    });
+  });
 
   const btnNotInt = root.querySelector('#btn-outcome-not-interested');
   if (btnNotInt && currentLead) {

@@ -169,5 +169,17 @@
   "settings_quiet_hours": "Quiet hours",
   "settings_quiet_hours_sub": "No reminders between {start} and {end}",
   "quiet_from": "Quiet from",
-  "quiet_to": "Quiet until"
+  "quiet_to": "Quiet until",
+  "view_list": "List",
+  "view_pipeline": "Pipeline",
+  "stage_new": "New",
+  "stage_contacted": "Contacted",
+  "stage_interested": "Interested",
+  "stage_ordered": "Ordered",
+  "stage_lost": "Lost",
+  "pipeline_lane_empty": "Nothing here",
+  "pipeline_hint": "Leads move when you log an outcome: message sent → Contacted, Replied → Interested, Converted → Ordered.",
+  "outcome_replied": "Replied",
+  "outcome_no_reply": "No reply",
+  "snack_replied": "Noted · lead replied"
 }
