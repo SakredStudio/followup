@@ -24,7 +24,7 @@ import {
 } from './lib/store.js';
 import { categorize, filterLeads, computeCatchUpBanner, startOfDay } from './lib/categorize.js';
 import {
-  buildFollowUpMessage,
+
   buildWhatsAppUrl,
   buildInstagramWebUrl,
   buildLeadSummaryText
@@ -32,6 +32,7 @@ import {
 import { normalizePhone } from './lib/phone.js';
 import { STAGES, groupByStage, deriveStage } from './lib/pipeline.js';
 import { computeStats } from './lib/stats.js';
+import { MAX_TEMPLATES, buildMessageForLead, resolveTemplate, saveTemplate, deleteTemplate, assignTagTemplate } from './lib/templates.js';
 import {
   canNotify,
   nextReminderAt,
@@ -66,6 +67,8 @@ let uiState = {
   backupSheetOpen: false,
   profileSheetOpen: false,
   notifyCap: null, // result of canNotify()
+  templateSheetOpen: false,
+  templateDraft: { id: null, name: '', text: '' },
   convertedValueDraft: '',
   noteDraft: '',
   snackMessage: null,
@@ -697,6 +700,86 @@ function renderStatsScreen(lang) {
   `;
 }
 
+function renderTemplatesScreen(lang) {
+  const s = appState.settings;
+  const templates = s.templates || [];
+  const map = s.tagTemplates || {};
+  return `
+    <div class="fub" data-screen="templates">
+      <div class="fub-bar">
+        <button type="button" class="btn icon flat" id="btn-templates-back" aria-label="${escapeHtml(t(lang, 'btn_back'))}">←</button>
+        <h1 style="flex:1;">${escapeHtml(t(lang, 'templates_title'))}</h1>
+        <span class="chip pro">PRO</span>
+      </div>
+      <div class="fub-content">
+        <p style="font-size:13px; color:var(--fub-ink-2); margin:0 2px 12px; line-height:1.45;">${escapeHtml(t(lang, 'templates_intro'))}</p>
+        <div class="fub-section"><h2>${escapeHtml(t(lang, 'templates_saved', { count: templates.length, max: MAX_TEMPLATES }))}</h2></div>
+        ${templates
+          .map(
+            (tp) => `
+              <div class="tpl-card">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <strong style="flex:1; font-size:14px;">${escapeHtml(tp.name)}</strong>
+                  <button type="button" class="btn sm ghost tpl-edit-btn" data-id="${escapeHtml(tp.id)}">✎ ${escapeHtml(t(lang, 'btn_edit'))}</button>
+                  <button type="button" class="btn sm danger tpl-del-btn" data-id="${escapeHtml(tp.id)}" aria-label="${escapeHtml(t(lang, 'btn_delete'))}">🗑</button>
+                </div>
+                <div style="font-size:13px; color:var(--fub-ink-2); margin-top:6px; white-space:pre-wrap;">${escapeHtml(tp.text)}</div>
+              </div>`
+          )
+          .join('')}
+        ${
+          templates.length < MAX_TEMPLATES
+            ? `<button type="button" class="btn ghost block" id="btn-new-template" style="margin:4px 0 16px;">+ ${escapeHtml(t(lang, 'templates_new'))}</button>`
+            : `<div class="hint" style="font-size:12px; color:var(--fub-ink-3); margin:4px 2px 16px;">${escapeHtml(t(lang, 'templates_limit_note', { max: MAX_TEMPLATES }))}</div>`
+        }
+
+        <div class="fub-section"><h2>${escapeHtml(t(lang, 'templates_by_tag'))}</h2></div>
+        <div class="settings-group">
+          ${appState.tags
+            .map(
+              (tg) => `
+                <div class="setting">
+                  <div class="text"><div class="t">${escapeHtml(tg.name)}</div></div>
+                  <select class="hour-select tag-template-select" data-tag="${escapeHtml(tg.name)}" aria-label="${escapeHtml(tg.name)}" style="max-width:150px;">
+                    <option value="">${escapeHtml(t(lang, 'templates_default_option'))}</option>
+                    ${templates
+                      .map((tp) => `<option value="${escapeHtml(tp.id)}" ${map[tg.name] === tp.id ? 'selected' : ''}>${escapeHtml(tp.name)}</option>`)
+                      .join('')}
+                  </select>
+                </div>`
+            )
+            .join('')}
+        </div>
+        <div style="font-size:12px; color:var(--fub-ink-3); text-align:center; margin:12px 0 80px;">${escapeHtml(t(lang, 'templates_share_note'))}</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderTemplateSheet(lang) {
+  const d = uiState.templateDraft;
+  return `
+    <div class="scrim" id="sheet-scrim"></div>
+    <form class="sheet" id="form-template">
+      <div class="grab"></div>
+      <h2 style="margin:0 0 12px; font-size:18px; font-weight:800;">${escapeHtml(t(lang, d.id ? 'templates_edit_title' : 'templates_new'))}</h2>
+      <div class="field">
+        <label for="tpl-name-in">${escapeHtml(t(lang, 'templates_name_label'))}</label>
+        <input id="tpl-name-in" type="text" value="${escapeHtml(d.name)}" placeholder="${escapeHtml(t(lang, 'templates_name_placeholder'))}" />
+      </div>
+      <div class="field">
+        <label for="tpl-text-in">${escapeHtml(t(lang, 'templates_text_label'))}</label>
+        <textarea id="tpl-text-in" required maxlength="300" placeholder="${escapeHtml(t(lang, 'followup_template'))}">${escapeHtml(d.text)}</textarea>
+        <div class="hint">${escapeHtml(t(lang, 'templates_vars_hint'))}</div>
+      </div>
+      <div style="display:flex; gap:10px; margin-top:12px;">
+        <button type="button" class="btn ghost" id="btn-close-template-sheet" style="flex:1;">${escapeHtml(t(lang, 'btn_cancel'))}</button>
+        <button type="submit" class="btn primary" style="flex:2;">✓ ${escapeHtml(t(lang, 'btn_save'))}</button>
+      </div>
+    </form>
+  `;
+}
+
 function renderSettingsScreen(lang) {
   const s = appState.settings;
   const archivedCount = appState.leads.filter((l) => Boolean(l.archived)).length;
@@ -748,6 +831,15 @@ function renderSettingsScreen(lang) {
             <div class="text">
               <div class="t">${escapeHtml(t(lang, 'stats_title'))}</div>
               <div class="s">${escapeHtml(t(lang, 'stats_settings_sub'))}</div>
+            </div>
+            <span style="color:var(--fub-ink-3);">›</span>
+          </div>
+
+          <div class="setting" id="setting-row-templates" style="cursor:pointer;">
+            <div class="ico cobalt">✉️</div>
+            <div class="text">
+              <div class="t">${escapeHtml(t(lang, 'templates_title'))} ${s.isPro ? '' : '<span class="chip pro" style="font-size:9px; padding:1px 5px;">PRO</span>'}</div>
+              <div class="s">${escapeHtml(t(lang, 'templates_settings_sub', { count: (s.templates || []).length }))}</div>
             </div>
             <span style="color:var(--fub-ink-3);">›</span>
           </div>
@@ -979,6 +1071,11 @@ function renderLeadDetailScreen(lang) {
               ${escapeHtml(t(lang, 'qa_share'))}
             </button>
           </div>
+          ${(() => {
+            const r = resolveTemplate(lead, appState.settings);
+            const tp = r.via === 'tag' ? (appState.settings.templates || []).find((x) => x.id === r.templateId) : null;
+            return tp ? `<div style="font-size:12px; color:var(--fub-ink-3); margin-top:8px;">✉️ ${escapeHtml(t(lang, 'templates_title'))}: <strong>${escapeHtml(tp.name)}</strong></div>` : '';
+          })()}
         </div>
 
         <div style="padding:12px 16px;">
@@ -1310,6 +1407,8 @@ export function renderApp() {
     mainScreenHtml = renderSettingsScreen(lang);
   } else if (uiState.screen === 'stats') {
     mainScreenHtml = renderStatsScreen(lang);
+  } else if (uiState.screen === 'templates') {
+    mainScreenHtml = renderTemplatesScreen(lang);
   } else {
     mainScreenHtml = renderTodayScreen(lang);
   }
@@ -1322,6 +1421,7 @@ export function renderApp() {
     ${uiState.convertedSheetOpen ? renderConvertedSheet(lang) : ''}
     ${uiState.backupSheetOpen ? renderBackupSheet(lang) : ''}
     ${uiState.profileSheetOpen ? renderProfileSheet(lang) : ''}
+    ${uiState.templateSheetOpen ? renderTemplateSheet(lang) : ''}
     ${uiState.snackMessage ? `<div class="snack">${escapeHtml(uiState.snackMessage)}</div>` : ''}
     ${renderTabBar(lang)}
   `;
@@ -1393,6 +1493,86 @@ function bindEvents(lang) {
   if (statsBack) {
     statsBack.addEventListener('click', () => {
       uiState.screen = uiState.prevScreen && uiState.prevScreen !== 'stats' ? uiState.prevScreen : uiState.tab;
+      renderApp();
+    });
+  }
+
+  // Message templates (Pro)
+  const rowTemplates = root.querySelector('#setting-row-templates');
+  if (rowTemplates) {
+    rowTemplates.addEventListener('click', () => {
+      if (!appState.settings.isPro) {
+        uiState.proSheetOpen = true;
+        renderApp();
+        return;
+      }
+      uiState.prevScreen = uiState.screen;
+      uiState.screen = 'templates';
+      renderApp();
+    });
+  }
+  const templatesBack = root.querySelector('#btn-templates-back');
+  if (templatesBack) {
+    templatesBack.addEventListener('click', () => {
+      uiState.screen = 'settings';
+      renderApp();
+    });
+  }
+  const newTplBtn = root.querySelector('#btn-new-template');
+  if (newTplBtn) {
+    newTplBtn.addEventListener('click', () => {
+      uiState.templateDraft = { id: null, name: '', text: '' };
+      uiState.templateSheetOpen = true;
+      renderApp();
+    });
+  }
+  root.querySelectorAll('.tpl-edit-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const tp = (appState.settings.templates || []).find((x) => x.id === btn.getAttribute('data-id'));
+      if (!tp) return;
+      uiState.templateDraft = { id: tp.id, name: tp.name, text: tp.text };
+      uiState.templateSheetOpen = true;
+      renderApp();
+    });
+  });
+  root.querySelectorAll('.tpl-del-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (!window.confirm(t(lang, 'templates_delete_confirm'))) return;
+      appState = deleteTemplate(appState, btn.getAttribute('data-id'));
+      renderApp();
+    });
+  });
+  root.querySelectorAll('.tag-template-select').forEach((sel) => {
+    sel.addEventListener('change', () => {
+      appState = assignTagTemplate(appState, sel.getAttribute('data-tag'), sel.value || null);
+      renderApp();
+    });
+  });
+  const closeTplSheet = root.querySelector('#btn-close-template-sheet');
+  if (closeTplSheet) {
+    closeTplSheet.addEventListener('click', () => {
+      uiState.templateSheetOpen = false;
+      renderApp();
+    });
+  }
+  const tplForm = root.querySelector('#form-template');
+  if (tplForm) {
+    tplForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const nIn = root.querySelector('#tpl-name-in');
+      const tIn = root.querySelector('#tpl-text-in');
+      try {
+        appState = saveTemplate(appState, { id: uiState.templateDraft.id, name: nIn ? nIn.value : '', text: tIn ? tIn.value : '' });
+        uiState.templateSheetOpen = false;
+        showSnack(t(lang, 'snack_template_saved'));
+      } catch (err) {
+        if (err && err.code === 'PRO_REQUIRED') {
+          uiState.templateSheetOpen = false;
+          uiState.proSheetOpen = true;
+        } else {
+          showSnack(t(lang, 'snack_template_invalid'));
+        }
+      }
       renderApp();
     });
   }
@@ -1725,7 +1905,7 @@ function bindEvents(lang) {
   const qaWa = root.querySelector('#btn-qa-whatsapp');
   if (qaWa && currentLead) {
     qaWa.addEventListener('click', () => {
-      const msg = buildFollowUpMessage(currentLead, true, t(lang, 'followup_template'));
+      const msg = buildMessageForLead(currentLead, appState.settings, t(lang, 'followup_template'));
       const url = buildWhatsAppUrl(currentLead.handle, msg);
       if (typeof window !== 'undefined' && window.open) {
         window.open(url, '_blank', 'noopener,noreferrer');
@@ -1739,7 +1919,7 @@ function bindEvents(lang) {
   const qaIg = root.querySelector('#btn-qa-instagram');
   if (qaIg && currentLead) {
     qaIg.addEventListener('click', async () => {
-      const msg = buildFollowUpMessage(currentLead, true, t(lang, 'followup_template'));
+      const msg = buildMessageForLead(currentLead, appState.settings, t(lang, 'followup_template'));
       await copyTextToClipboard(msg);
       const url = buildInstagramWebUrl(currentLead.handle);
       if (typeof window !== 'undefined' && window.open) {
@@ -1754,7 +1934,7 @@ function bindEvents(lang) {
   const qaCopy = root.querySelector('#btn-qa-copy');
   if (qaCopy && currentLead) {
     qaCopy.addEventListener('click', async () => {
-      const msg = buildFollowUpMessage(currentLead, true, t(lang, 'followup_template'));
+      const msg = buildMessageForLead(currentLead, appState.settings, t(lang, 'followup_template'));
       await copyTextToClipboard(msg);
       showSnack(t(lang, 'snack_copied'));
       renderApp();
@@ -1945,6 +2125,7 @@ function bindEvents(lang) {
       uiState.convertedSheetOpen = false;
       uiState.backupSheetOpen = false;
       uiState.profileSheetOpen = false;
+      uiState.templateSheetOpen = false;
       renderApp();
     });
   }

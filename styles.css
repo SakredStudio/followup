@@ -1018,3 +1018,12 @@ button, input, select, textarea, a.tap-target {
   border-radius: 999px;
 }
 .stat-empty { font-size: 13px; color: var(--fub-ink-3); padding: 8px 4px 12px; }
+
+/* v2: message templates */
+.tpl-card {
+  background: var(--fub-card);
+  border: 1px solid var(--fub-line);
+  border-radius: 14px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
