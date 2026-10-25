@@ -1057,3 +1057,12 @@ button, input, select, textarea, a.tap-target {
 
 /* v3: team of two */
 .lead-by { font-size: 11px; color: var(--fub-ink-3); margin-top: 3px; font-weight: 600; }
+
+/* v3: festival reactivation card */
+.reactivate-card {
+  background: linear-gradient(135deg, #B9462D, #F5A623);
+  color: #fff;
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}

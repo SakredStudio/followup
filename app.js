@@ -36,7 +36,8 @@ import { normalizePhone } from './lib/phone.js';
 import { STAGES, groupByStage, deriveStage } from './lib/pipeline.js';
 import { computeStats } from './lib/stats.js';
 import { hasSharePayload, readSharePayload, parseSharedPayload } from './lib/share-target.js';
-import { snoozePresets, pickDateAt } from './lib/snooze.js';
+import { snoozePresets, pickDateAt, tomorrowAt } from './lib/snooze.js';
+import { activeFestivalWindow, coldLeads } from './lib/festivals.js';
 import {
   productLimit,
   addProduct,
@@ -77,6 +78,7 @@ import {
   nextReminderAt,
   buildDigestSnapshot,
   buildDigestText,
+  buildSelfDigestText,
   writeDigestSnapshot,
   registerPeriodicDigest,
   unregisterPeriodicDigest,
@@ -491,6 +493,21 @@ function renderTodayScreen(lang) {
                </div>`
             : ''
         }
+
+        ${(() => {
+          const win = activeFestivalWindow(now);
+          if (!win) return '';
+          const cold = coldLeads(appState.leads, now);
+          if (cold.length === 0) return '';
+          return `<div class="reactivate-card">
+              <div style="font-size:13px; font-weight:800;">${escapeHtml(t(lang, `reactivate_title_${win.id}`))}</div>
+              <div style="font-size:12px; margin:4px 0 10px; opacity:.9;">${escapeHtml(t(lang, 'reactivate_body', { count: cold.length }))}</div>
+              <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                <button type="button" class="btn sm" id="btn-reactivate-all" style="background:#fff; color:#5e3d02;">${escapeHtml(t(lang, 'reactivate_cta', { count: cold.length }))}</button>
+                <span style="font-size:11px; opacity:.85;">${escapeHtml(cold.slice(0, 3).map((l) => l.name.split(' ')[0]).join(' · '))}${cold.length > 3 ? ' …' : ''}</span>
+              </div>
+            </div>`;
+        })()}
 
         <div class="today-hero">
           <div class="greet">${escapeHtml(firstName ? t(lang, 'today_greet', { firstName }) : t(lang, 'today_greet_anon'))}</div>
@@ -1248,6 +1265,15 @@ function renderSettingsScreen(lang) {
             <span style="color:var(--fub-ink-3);">›</span>
           </div>
 
+          <div class="setting" id="setting-row-self-digest" style="cursor:pointer;">
+            <div class="ico" style="background:rgba(31,168,85,.12); color:var(--fub-wa);">💬</div>
+            <div class="text">
+              <div class="t">${escapeHtml(t(lang, 'self_digest_title'))}</div>
+              <div class="s">${escapeHtml(normalizePhone(s.sellerPhone || '').length >= 12 ? t(lang, 'self_digest_sub') : t(lang, 'self_digest_no_phone'))}</div>
+            </div>
+            <span style="color:var(--fub-ink-3);">›</span>
+          </div>
+
           <div class="setting" id="setting-row-catalogue" style="cursor:pointer;">
             <div class="ico warn">🛍️</div>
             <div class="text">
@@ -1448,6 +1474,11 @@ function renderProfileSheet(lang) {
       <div class="field">
         <label for="profile-biz-in">${escapeHtml(t(lang, 'profile_business_label'))}</label>
         <input id="profile-biz-in" type="text" value="${escapeHtml(s.sellerBusiness)}" />
+      </div>
+      <div class="field">
+        <label for="profile-phone-in">${escapeHtml(t(lang, 'profile_phone_label'))}</label>
+        <input id="profile-phone-in" type="tel" inputmode="tel" value="${escapeHtml(s.sellerPhone || '')}" placeholder="${escapeHtml(t(lang, 'placeholder_wa'))}" />
+        <div class="hint">${escapeHtml(t(lang, 'profile_phone_hint'))}</div>
       </div>
       <div style="display:flex; gap:10px; margin-top:12px;">
         <button type="button" class="btn ghost" id="btn-close-profile-sheet" style="flex:1;">${escapeHtml(t(lang, 'btn_cancel'))}</button>
@@ -1970,6 +2001,38 @@ function bindEvents(lang) {
     });
   }
 
+  // Self digest on WhatsApp (v3): one tap opens wa.me to the seller's own number; they send it.
+  const rowSelfDigest = root.querySelector('#setting-row-self-digest');
+  if (rowSelfDigest) {
+    rowSelfDigest.addEventListener('click', () => {
+      const phone = normalizePhone(appState.settings.sellerPhone || '');
+      if (phone.length < 12) {
+        uiState.profileSheetOpen = true;
+        showSnack(t(lang, 'self_digest_no_phone'));
+        renderApp();
+        return;
+      }
+      const text = buildSelfDigestText(categorize(appState.leads, Date.now()), lang, Date.now());
+      window.open(buildWhatsAppUrl(phone, text), '_blank', 'noopener,noreferrer');
+      showSnack(t(lang, 'snack_wa_opened'));
+      renderApp();
+    });
+  }
+
+  // Festival reactivation (v3): reschedule every cold lead to tomorrow 9 AM.
+  const reactivateBtn = root.querySelector('#btn-reactivate-all');
+  if (reactivateBtn) {
+    reactivateBtn.addEventListener('click', () => {
+      const cold = coldLeads(appState.leads, Date.now());
+      if (cold.length === 0) return;
+      if (!window.confirm(t(lang, 'reactivate_confirm', { count: cold.length }))) return;
+      const at = tomorrowAt(Date.now(), appState.settings.reminderHour);
+      for (const l of cold) appState = rescheduleFollowUp(appState, l.id, at);
+      showSnack(t(lang, 'snack_reactivated', { count: cold.length }));
+      renderApp();
+    });
+  }
+
   // Catalogue (v3)
   const rowCatalogue = root.querySelector('#setting-row-catalogue');
   if (rowCatalogue) {
@@ -2479,10 +2542,12 @@ function bindEvents(lang) {
       const nIn = root.querySelector('#profile-name-in');
       const hIn = root.querySelector('#profile-handle-in');
       const bIn = root.querySelector('#profile-biz-in');
+      const pIn = root.querySelector('#profile-phone-in');
       appState = updateSettings(appState, {
         sellerName: nIn && nIn.value.trim() ? nIn.value.trim() : appState.settings.sellerName,
         sellerHandle: hIn ? hIn.value.trim() : appState.settings.sellerHandle,
-        sellerBusiness: bIn ? bIn.value.trim() : appState.settings.sellerBusiness
+        sellerBusiness: bIn ? bIn.value.trim() : appState.settings.sellerBusiness,
+        sellerPhone: pIn ? pIn.value.trim() : appState.settings.sellerPhone || ''
       });
       uiState.profileSheetOpen = false;
       renderApp();

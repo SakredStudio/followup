@@ -294,5 +294,17 @@
   "team_no_vault": "Create a vault in Cloud backup first.",
   "team_last_by": "Last by {who} · {when}",
   "team_merge_rule": "When both phones change the same lead, the newer change wins; notes from both phones are kept.",
-  "snack_device_saved": "Phone name saved"
+  "snack_device_saved": "Phone name saved",
+  "self_digest_title": "Send me today's list on WhatsApp",
+  "self_digest_sub": "Opens a chat with your own number, list pre-typed. You tap Send.",
+  "self_digest_no_phone": "Add your WhatsApp number in Profile first",
+  "profile_phone_label": "Your WhatsApp number",
+  "profile_phone_hint": "Only used for \"Send me today's list\". Never shared.",
+  "reactivate_title_diwali": "🪔 Diwali is coming",
+  "reactivate_title_rakhi": "🎀 Raksha Bandhan is coming",
+  "reactivate_title_wedding": "💍 Wedding season",
+  "reactivate_body": "{count} leads have been quiet for 30+ days. A festive hello often brings them back.",
+  "reactivate_cta": "Reactivate {count} → tomorrow",
+  "reactivate_confirm": "Set a follow-up for tomorrow 9 AM on {count} quiet leads? You still message each one yourself.",
+  "snack_reactivated": "{count} leads back on tomorrow's list"
 }

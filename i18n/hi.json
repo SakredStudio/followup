@@ -294,5 +294,17 @@
   "team_no_vault": "पहले क्लाउड बैकअप में वॉल्ट बनाएँ।",
   "team_last_by": "आख़िरी बार {who} · {when}",
   "team_merge_rule": "दोनों फ़ोन एक ही लीड बदलें तो नया बदलाव जीतता है; दोनों फ़ोन के नोट्स रहते हैं।",
-  "snack_device_saved": "फ़ोन का नाम सेव हुआ"
+  "snack_device_saved": "फ़ोन का नाम सेव हुआ",
+  "self_digest_title": "आज की लिस्ट मुझे WhatsApp पर भेजो",
+  "self_digest_sub": "आपके अपने नंबर की चैट खुलती है, लिस्ट पहले से टाइप। Send आप दबाते हैं।",
+  "self_digest_no_phone": "पहले प्रोफ़ाइल में अपना WhatsApp नंबर जोड़ें",
+  "profile_phone_label": "आपका WhatsApp नंबर",
+  "profile_phone_hint": "सिर्फ़ \"आज की लिस्ट मुझे भेजो\" के लिए। कभी साझा नहीं होता।",
+  "reactivate_title_diwali": "🪔 दिवाली आ रही है",
+  "reactivate_title_rakhi": "🎀 रक्षा बंधन आ रहा है",
+  "reactivate_title_wedding": "💍 शादियों का मौसम",
+  "reactivate_body": "{count} लीड्स 30+ दिनों से चुप हैं। त्योहार की एक शुभकामना अक्सर उन्हें वापस लाती है।",
+  "reactivate_cta": "{count} को फिर जगाएँ → कल",
+  "reactivate_confirm": "{count} चुप लीड्स पर कल सुबह 9 बजे का फ़ॉलो-अप लगाएँ? मैसेज हर एक को आप ही करेंगे।",
+  "snack_reactivated": "{count} लीड्स कल की लिस्ट में वापस"
 }

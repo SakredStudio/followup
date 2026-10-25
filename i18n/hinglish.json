@@ -294,5 +294,17 @@
   "team_no_vault": "Pehle Cloud backup mein vault banao.",
   "team_last_by": "Aakhri baar {who} · {when}",
   "team_merge_rule": "Dono phone ek hi lead badlein to naya change jeetta hai; dono phone ke notes rehte hain.",
-  "snack_device_saved": "Phone ka naam save hua"
+  "snack_device_saved": "Phone ka naam save hua",
+  "self_digest_title": "Aaj ki list mujhe WhatsApp pe bhejo",
+  "self_digest_sub": "Aapke apne number ki chat khulti hai, list pehle se typed. Send aap dabate ho.",
+  "self_digest_no_phone": "Pehle Profile mein apna WhatsApp number jodo",
+  "profile_phone_label": "Aapka WhatsApp number",
+  "profile_phone_hint": "Sirf \"Aaj ki list mujhe bhejo\" ke liye. Kabhi share nahi hota.",
+  "reactivate_title_diwali": "🪔 Diwali aa rahi hai",
+  "reactivate_title_rakhi": "🎀 Raksha Bandhan aa raha hai",
+  "reactivate_title_wedding": "💍 Shaadi ka season",
+  "reactivate_body": "{count} leads 30+ din se chup hain. Ek festive hello aksar unhe wapas laata hai.",
+  "reactivate_cta": "{count} ko phir jagao → kal",
+  "reactivate_confirm": "{count} chup leads pe kal subah 9 baje ka follow-up lagayein? Message har ek ko aap hi karoge.",
+  "snack_reactivated": "{count} leads kal ki list mein wapas"
 }
