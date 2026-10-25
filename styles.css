@@ -1066,3 +1066,27 @@ button, input, select, textarea, a.tap-target {
   padding: 12px 14px;
   margin-bottom: 10px;
 }
+
+/* Tab bar pinned on every screen (long screens like Settings used to push it off-screen). */
+.fub-tabs {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 430px;
+  z-index: 30;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+}
+#app {
+  padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+}
+.snack {
+  bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+}
+.fab {
+  position: fixed;
+  bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  right: max(16px, calc(50% - 215px + 16px));
+  z-index: 31;
+}
