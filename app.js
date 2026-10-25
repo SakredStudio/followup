@@ -18,6 +18,9 @@ import {
   getLeadEvents,
   exportBackupJson,
   importBackupJson,
+  backupPayload,
+  saveState,
+  migrate,
   exportLeadsCsv,
   seedSampleLeads,
   FREE_ACTIVE_LEAD_LIMIT
@@ -46,6 +49,27 @@ import {
   canvasToPngBlob
 } from './lib/catalogue.js';
 import { importPhoto, getPhoto, deletePhoto, clearPhotos } from './lib/photos.js';
+import {
+
+  AUTO_SYNC_DEBOUNCE_MS,
+  isCloudConfigured,
+  newVaultId,
+  formatVaultCode,
+  parseVaultCode,
+  deriveKey,
+  exportKeyB64,
+  importKeyB64,
+  encryptJson,
+  decryptJson,
+  pushVault,
+  pullVault,
+  deleteVault,
+  resolveConflict,
+  stateUpdatedAt,
+  randomBytes,
+  bytesToBase64,
+  base64ToBytes
+} from './lib/cloud.js';
 import { MAX_TEMPLATES, buildMessageForLead, resolveTemplate, saveTemplate, deleteTemplate, assignTagTemplate } from './lib/templates.js';
 import {
   canNotify,
@@ -64,6 +88,8 @@ let snackTimer = null;
 let digestTimer = null;
 let cancelReminder = null;
 let swRegistration = null;
+let cloudTimer = null;
+let cloudBusy = false;
 let uiState = {
   tab: 'today', // 'today' | 'all' | 'settings'
   screen: 'today', // 'onboarding' | 'today' | 'detail' | 'all' | 'settings'
@@ -87,6 +113,8 @@ let uiState = {
   productDraft: { id: null, name: '', price: '', photoId: null },
   productPickerOpen: false,
   cardBusy: false,
+  cloudMode: null, // null | 'create' | 'restore'
+  cloudStatus: '',
   photoUrls: {}, // photoId -> object URL (browser cache for thumbnails)
   convertedValueDraft: '',
   noteDraft: '',
@@ -970,6 +998,153 @@ async function sendProductCard(lead, product, lang) {
   showSnack(t(lang, shared ? 'snack_card_shared' : 'snack_card_downloaded'));
 }
 
+/** Apply a decrypted remote state to this phone (v3-P2: replace; v3-P3 swaps in merge). */
+function applyRemoteState(remoteState) {
+  const cloud = appState.settings.cloud;
+  const merged = migrate(remoteState);
+  appState = saveState({ ...merged, settings: { ...merged.settings, cloud, isPro: appState.settings.isPro, deviceName: appState.settings.deviceName } });
+}
+
+async function cloudPush(key) {
+  const cloud = appState.settings.cloud;
+  const payload = await encryptJson(backupPayload(appState), { key, salt: cloud.salt, updatedAt: stateUpdatedAt(appState) || Date.now() });
+  await pushVault(cloud.vaultId, payload);
+  appState = updateSettings(appState, { cloud: { ...cloud, lastSyncAt: Date.now() } });
+}
+
+/** Full sync: pull, merge if the cloud copy is newer (with confirm unless silent), then push. */
+async function cloudSync({ silent = false, lang } = {}) {
+  const cloud = appState.settings.cloud;
+  if (!isCloudConfigured() || !cloud.vaultId || !cloud.keyB64 || cloudBusy) return;
+  cloudBusy = true;
+  const L = lang || appState.settings.language;
+  try {
+    const key = await importKeyB64(cloud.keyB64);
+    const remote = await pullVault(cloud.vaultId);
+    if (remote && resolveConflict(cloud.lastSyncAt, remote.updatedAt) === 'remote') {
+      const remoteState = await decryptJson(remote, { key });
+      if (silent || window.confirm(t(L, 'cloud_conflict_confirm'))) {
+        applyRemoteState(remoteState);
+      }
+    }
+    await cloudPush(key);
+    if (!silent) showSnack(t(L, 'snack_cloud_synced'));
+  } catch (err) {
+    const code = err && err.code;
+    uiState.cloudStatus = t(L, code === 'DECRYPT_FAILED' ? 'snack_cloud_wrong_pass' : code === 'TOO_LARGE' ? 'snack_cloud_too_large' : 'snack_cloud_failed');
+    if (!silent) showSnack(uiState.cloudStatus);
+  }
+  cloudBusy = false;
+  renderApp();
+}
+
+/** Debounced auto-sync (30 s) after changes while the app is open. */
+function scheduleCloudSync() {
+  const cloud = appState?.settings?.cloud;
+  if (!cloud || !cloud.autoSync || !cloud.vaultId || !isCloudConfigured()) return;
+  if (stateUpdatedAt(appState) <= cloud.lastSyncAt) return;
+  if (cloudTimer) clearTimeout(cloudTimer);
+  cloudTimer = setTimeout(() => cloudSync({ silent: true }), AUTO_SYNC_DEBOUNCE_MS);
+}
+
+function renderCloudScreen(lang) {
+  const s = appState.settings;
+  const cloud = s.cloud;
+  const configured = isCloudConfigured();
+  const when = cloud.lastSyncAt ? `${relPastTime(cloud.lastSyncAt, Date.now(), lang)} · ${new Date(cloud.lastSyncAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}` : '';
+  const form = (mode) => `
+    <form id="form-cloud-${mode}" class="tpl-card" style="margin-top:10px;">
+      ${
+        mode === 'restore'
+          ? `<div class="field">
+               <label for="cloud-code-in">${escapeHtml(t(lang, 'cloud_vault_code'))}</label>
+               <input id="cloud-code-in" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="xxxx-xxxx-xxxx-…" required />
+               <div class="hint">${escapeHtml(t(lang, 'cloud_vault_code_hint'))}</div>
+             </div>`
+          : ''
+      }
+      <div class="field">
+        <label for="cloud-pass-in">${escapeHtml(t(lang, 'cloud_passphrase'))}</label>
+        <input id="cloud-pass-in" type="password" minlength="8" required autocomplete="new-password" />
+        <div class="hint">${escapeHtml(t(lang, 'cloud_passphrase_hint'))}</div>
+      </div>
+      ${
+        mode === 'create'
+          ? `<div class="field">
+               <label for="cloud-pass2-in">${escapeHtml(t(lang, 'cloud_passphrase_again'))}</label>
+               <input id="cloud-pass2-in" type="password" minlength="8" required autocomplete="new-password" />
+             </div>`
+          : ''
+      }
+      <div style="display:flex; gap:10px;">
+        <button type="button" class="btn ghost" id="btn-cloud-cancel" style="flex:1;">${escapeHtml(t(lang, 'btn_cancel'))}</button>
+        <button type="submit" class="btn primary" style="flex:2;" ${cloudBusy ? 'disabled' : ''}>✓ ${escapeHtml(t(lang, mode === 'create' ? 'cloud_create' : 'cloud_restore'))}</button>
+      </div>
+    </form>`;
+
+  return `
+    <div class="fub" data-screen="cloud">
+      <div class="fub-bar">
+        <button type="button" class="btn icon flat" id="btn-cloud-back" aria-label="${escapeHtml(t(lang, 'btn_back'))}">←</button>
+        <h1 style="flex:1;">${escapeHtml(t(lang, 'cloud_title'))}</h1>
+        <span class="chip pro">PRO</span>
+      </div>
+      <div class="fub-content">
+        ${
+          !configured
+            ? `<div class="pro-card" style="margin-bottom:14px;">
+                 <h3>${escapeHtml(t(lang, 'cloud_unavailable_title'))}</h3>
+                 <p style="margin-bottom:0;">${escapeHtml(t(lang, 'cloud_unavailable_body'))}</p>
+               </div>`
+            : ''
+        }
+        <p style="font-size:13px; color:var(--fub-ink-2); margin:0 2px 12px; line-height:1.45;">${escapeHtml(t(lang, 'cloud_intro'))}</p>
+        ${uiState.cloudStatus ? `<div style="font-size:13px; color:#8A2C1F; margin:0 2px 10px; font-weight:600;">${escapeHtml(uiState.cloudStatus)}</div>` : ''}
+        ${
+          cloud.vaultId
+            ? `
+              <div class="tpl-card">
+                <div style="font-size:12px; color:var(--fub-ink-3); font-weight:600;">${escapeHtml(t(lang, 'cloud_your_code'))}</div>
+                <div style="font-family:var(--fub-mono); font-size:15px; margin:6px 0 10px; word-break:break-all;">${escapeHtml(formatVaultCode(cloud.vaultId))}</div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                  <button type="button" class="btn sm ghost" id="btn-cloud-copy">📋 ${escapeHtml(t(lang, 'cloud_copy_code'))}</button>
+                  <button type="button" class="btn sm primary" id="btn-cloud-sync" ${configured && !cloudBusy ? '' : 'disabled'}>🔄 ${escapeHtml(t(lang, 'cloud_sync_now'))}</button>
+                </div>
+                <div style="font-size:12px; color:var(--fub-ink-3); margin-top:10px;">${escapeHtml(cloud.lastSyncAt ? t(lang, 'cloud_last_sync', { when }) : t(lang, 'cloud_never_synced'))}</div>
+              </div>
+              <div class="settings-group">
+                <div class="setting">
+                  <div class="ico">🔄</div>
+                  <div class="text">
+                    <div class="t">${escapeHtml(t(lang, 'cloud_auto_sync'))}</div>
+                    <div class="s">${escapeHtml(t(lang, 'cloud_auto_sync_sub'))}</div>
+                  </div>
+                  <button type="button" id="btn-cloud-autosync" class="tog ${cloud.autoSync ? 'on' : ''}" style="border:none;" aria-pressed="${cloud.autoSync ? 'true' : 'false'}" aria-label="${escapeHtml(t(lang, 'cloud_auto_sync'))}"></button>
+                </div>
+                <div class="setting" id="btn-cloud-forget" style="cursor:pointer;">
+                  <div class="ico">🚪</div>
+                  <div class="text"><div class="t">${escapeHtml(t(lang, 'cloud_forget'))}</div></div>
+                </div>
+                <div class="setting" id="btn-cloud-delete" style="cursor:pointer;">
+                  <div class="ico" style="background:var(--fub-terracotta-soft); color:#8A2C1F;">🗑️</div>
+                  <div class="text"><div class="t" style="color:#8A2C1F;">${escapeHtml(t(lang, 'cloud_delete_remote'))}</div></div>
+                </div>
+              </div>
+              <div style="font-size:12px; color:var(--fub-ink-3); margin:0 2px 80px;">${escapeHtml(t(lang, 'cloud_key_note'))}</div>`
+            : `
+              ${
+                uiState.cloudMode
+                  ? form(uiState.cloudMode)
+                  : `<button type="button" class="btn primary block" id="btn-cloud-mode-create" ${configured ? '' : 'disabled'}>🔐 ${escapeHtml(t(lang, 'cloud_create'))}</button>
+                     <button type="button" class="btn ghost block" id="btn-cloud-mode-restore" style="margin-top:10px;" ${configured ? '' : 'disabled'}>📥 ${escapeHtml(t(lang, 'cloud_restore'))}</button>`
+              }
+              <div style="height:80px;"></div>`
+        }
+      </div>
+    </div>
+  `;
+}
+
 function renderSettingsScreen(lang) {
   const s = appState.settings;
   const archivedCount = appState.leads.filter((l) => Boolean(l.archived)).length;
@@ -1030,6 +1205,15 @@ function renderSettingsScreen(lang) {
             <div class="text">
               <div class="t">${escapeHtml(t(lang, 'catalogue_title'))}</div>
               <div class="s">${escapeHtml(t(lang, 'catalogue_settings_sub', { count: (appState.catalogue || []).length, max: productLimit(s) }))}</div>
+            </div>
+            <span style="color:var(--fub-ink-3);">›</span>
+          </div>
+
+          <div class="setting" id="setting-row-cloud" style="cursor:pointer;">
+            <div class="ico cobalt">☁️</div>
+            <div class="text">
+              <div class="t">${escapeHtml(t(lang, 'cloud_title'))} ${s.isPro ? '' : '<span class="chip pro" style="font-size:9px; padding:1px 5px;">PRO</span>'}</div>
+              <div class="s">${escapeHtml(isCloudConfigured() ? t(lang, 'cloud_settings_sub') : t(lang, 'cloud_unavailable_title'))}</div>
             </div>
             <span style="color:var(--fub-ink-3);">›</span>
           </div>
@@ -1634,6 +1818,8 @@ export function renderApp() {
     mainScreenHtml = renderTemplatesScreen(lang);
   } else if (uiState.screen === 'catalogue') {
     mainScreenHtml = renderCatalogueScreen(lang);
+  } else if (uiState.screen === 'cloud') {
+    mainScreenHtml = renderCloudScreen(lang);
   } else {
     mainScreenHtml = renderTodayScreen(lang);
   }
@@ -1654,6 +1840,7 @@ export function renderApp() {
   `;
   bindEvents(lang);
   scheduleDigestWrite();
+  scheduleCloudSync();
 }
 
 function syncDraftInputs(root) {
@@ -1866,6 +2053,148 @@ function bindEvents(lang) {
       renderApp();
     });
   });
+
+  // Cloud backup (v3, Pro)
+  const rowCloud = root.querySelector('#setting-row-cloud');
+  if (rowCloud) {
+    rowCloud.addEventListener('click', () => {
+      if (!appState.settings.isPro) {
+        uiState.proSheetOpen = true;
+        renderApp();
+        return;
+      }
+      uiState.cloudMode = null;
+      uiState.cloudStatus = '';
+      uiState.screen = 'cloud';
+      renderApp();
+    });
+  }
+  const cloudBack = root.querySelector('#btn-cloud-back');
+  if (cloudBack) {
+    cloudBack.addEventListener('click', () => {
+      uiState.screen = 'settings';
+      renderApp();
+    });
+  }
+  for (const mode of ['create', 'restore']) {
+    const b = root.querySelector(`#btn-cloud-mode-${mode}`);
+    if (b) {
+      b.addEventListener('click', () => {
+        uiState.cloudMode = mode;
+        uiState.cloudStatus = '';
+        renderApp();
+      });
+    }
+  }
+  const cloudCancel = root.querySelector('#btn-cloud-cancel');
+  if (cloudCancel) {
+    cloudCancel.addEventListener('click', () => {
+      uiState.cloudMode = null;
+      renderApp();
+    });
+  }
+  const cloudCreateForm = root.querySelector('#form-cloud-create');
+  if (cloudCreateForm) {
+    cloudCreateForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const p1 = root.querySelector('#cloud-pass-in').value;
+      const p2 = root.querySelector('#cloud-pass2-in').value;
+      if (p1.length < 8) return showSnack(t(lang, 'snack_cloud_short')), renderApp();
+      if (p1 !== p2) return showSnack(t(lang, 'snack_cloud_mismatch')), renderApp();
+      cloudBusy = true;
+      renderApp();
+      try {
+        const salt = randomBytes(16);
+        const key = await deriveKey(p1, salt);
+        const cloud = { vaultId: newVaultId(), salt: bytesToBase64(salt), keyB64: await exportKeyB64(key), autoSync: true, lastSyncAt: 0 };
+        appState = updateSettings(appState, { cloud });
+        cloudBusy = false;
+        await cloudPush(key);
+        uiState.cloudMode = null;
+        uiState.cloudStatus = '';
+        showSnack(t(lang, 'snack_cloud_created'));
+      } catch (err) {
+        appState = updateSettings(appState, { cloud: { vaultId: null, salt: null, keyB64: null, autoSync: false, lastSyncAt: 0 } });
+        uiState.cloudStatus = t(lang, err && err.code === 'TOO_LARGE' ? 'snack_cloud_too_large' : 'snack_cloud_failed');
+      }
+      cloudBusy = false;
+      renderApp();
+    });
+  }
+  const cloudRestoreForm = root.querySelector('#form-cloud-restore');
+  if (cloudRestoreForm) {
+    cloudRestoreForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const vaultId = parseVaultCode(root.querySelector('#cloud-code-in').value);
+      const pass = root.querySelector('#cloud-pass-in').value;
+      if (!vaultId) return showSnack(t(lang, 'snack_cloud_wrong_pass')), renderApp();
+      cloudBusy = true;
+      renderApp();
+      try {
+        const remote = await pullVault(vaultId);
+        if (!remote) {
+          uiState.cloudStatus = t(lang, 'snack_cloud_not_found');
+        } else {
+          const key = await deriveKey(pass, base64ToBytes(remote.salt));
+          const remoteState = await decryptJson(remote, { key });
+          if (window.confirm(t(lang, 'cloud_restore_confirm'))) {
+            appState = updateSettings(appState, {
+              cloud: { vaultId, salt: remote.salt, keyB64: await exportKeyB64(key), autoSync: true, lastSyncAt: 0 }
+            });
+            applyRemoteState(remoteState);
+            cloudBusy = false;
+            await cloudPush(key);
+            uiState.cloudMode = null;
+            uiState.cloudStatus = '';
+            showSnack(t(lang, 'snack_cloud_restored'));
+          }
+        }
+      } catch (err) {
+        uiState.cloudStatus = t(lang, err && err.code === 'DECRYPT_FAILED' ? 'snack_cloud_wrong_pass' : 'snack_cloud_failed');
+      }
+      cloudBusy = false;
+      renderApp();
+    });
+  }
+  const cloudCopy = root.querySelector('#btn-cloud-copy');
+  if (cloudCopy) {
+    cloudCopy.addEventListener('click', async () => {
+      await copyTextToClipboard(formatVaultCode(appState.settings.cloud.vaultId));
+      showSnack(t(lang, 'snack_cloud_copied'));
+      renderApp();
+    });
+  }
+  const cloudSyncBtn = root.querySelector('#btn-cloud-sync');
+  if (cloudSyncBtn) cloudSyncBtn.addEventListener('click', () => cloudSync({ silent: false, lang }));
+  const cloudAuto = root.querySelector('#btn-cloud-autosync');
+  if (cloudAuto) {
+    cloudAuto.addEventListener('click', () => {
+      const cloud = appState.settings.cloud;
+      appState = updateSettings(appState, { cloud: { ...cloud, autoSync: !cloud.autoSync } });
+      renderApp();
+    });
+  }
+  const cloudForget = root.querySelector('#btn-cloud-forget');
+  if (cloudForget) {
+    cloudForget.addEventListener('click', () => {
+      if (!window.confirm(t(lang, 'cloud_forget_confirm'))) return;
+      appState = updateSettings(appState, { cloud: { vaultId: null, salt: null, keyB64: null, autoSync: false, lastSyncAt: 0 } });
+      renderApp();
+    });
+  }
+  const cloudDelete = root.querySelector('#btn-cloud-delete');
+  if (cloudDelete) {
+    cloudDelete.addEventListener('click', async () => {
+      if (!window.confirm(t(lang, 'cloud_delete_remote_confirm'))) return;
+      try {
+        await deleteVault(appState.settings.cloud.vaultId);
+      } catch {
+        /* ignore */
+      }
+      appState = updateSettings(appState, { cloud: { vaultId: null, salt: null, keyB64: null, autoSync: false, lastSyncAt: 0 } });
+      renderApp();
+    });
+  }
 
   // Message templates (Pro)
   const rowTemplates = root.querySelector('#setting-row-templates');
