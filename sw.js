@@ -1,4 +1,5 @@
-const CACHE_NAME = 'followup-buddy-v1';
+// Cache-first shell: installed phones only pick up a new release when this name changes. BUMP ON EVERY DEPLOY.
+const CACHE_NAME = 'followup-buddy-v2';
 
 const PRECACHE_ASSETS = [
   './',
@@ -10,6 +11,7 @@ const PRECACHE_ASSETS = [
   './i18n/en.json',
   './i18n/hi.json',
   './lib/i18n.js',
+  './lib/billing.js',
   './lib/format.js',
   './lib/phone.js',
   './lib/seed.js',

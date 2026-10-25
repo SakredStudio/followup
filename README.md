@@ -6,7 +6,7 @@
 - **Today Screen**: Emerald hero card with today's follow-up count, Overdue & Upcoming (next 7 days) buckets, priority star (`★`) sorting, and missed-days catch-up banner.
 - **Quick Add Lead**: Save a lead in under 10 seconds with 3-way Source segmented control (`WhatsApp / Instagram / Other`), 1-tap delay chips (`Tomorrow / 2d / 1w / 1m`), tags, and priority star.
 - **Lead Detail & 1-Tap Deep Links**:
-  - **WhatsApp**: Opens `https://wa.me/91XXXXXXXXXX?text=...` with a pre-filled follow-up message (80-char interest truncation + `— sent with FollowUp Buddy · https://sakred.in/followup`).
+  - **WhatsApp**: Opens `https://wa.me/91XXXXXXXXXX?text=...` with a pre-filled follow-up message (80-char interest truncation + `— sent with FollowUp Buddy · https://sakredstudio.github.io/followup`).
   - **Instagram**: Copies the follow-up message to clipboard and opens `https://instagram.com/<handle>`.
   - **History Timeline**: Tracks `created`, `contacted`, `rescheduled`, `status_change`, and custom `note` events (`trg_event_touch` updates `lastContactedAt` on `note`/`contacted`).
   - **Outcomes**: Mark leads as `Converted` (with optional ₹ order value), `Not interested`, or `Lost`.

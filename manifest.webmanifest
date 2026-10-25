@@ -2,12 +2,12 @@
   "name": "FollowUp Buddy — WhatsApp & Instagram Lead Tracker",
   "short_name": "FollowUp Buddy",
   "description": "Offline-first personal lead follow-up organizer for Indian solo sellers on WhatsApp and Instagram.",
-  "start_url": "./index.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#FAF8F4",
-  "theme_color": "#0E9F6E",
+  "theme_color": "#0F6E5C",
   "lang": "en-IN",
   "icons": [
     {

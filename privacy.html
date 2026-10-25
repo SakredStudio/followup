@@ -1,31 +1,74 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0F6E5C">
   <title>FollowUp Buddy — Privacy Policy</title>
-  <link rel="stylesheet" href="./fonts/fonts.css" />
-  <link rel="stylesheet" href="./styles.css" />
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+  <link rel="stylesheet" href="./fonts/fonts.css">
+  <style>
+    :root { --emerald: #0F6E5C; --emerald-deep: #0B5446; --bg: #FAF7F2; --ink: #1A1A19; --ink-soft: #4A4A47; --line: #E8E2D5; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Plus Jakarta Sans", "Noto Sans", "Noto Sans Devanagari", system-ui, sans-serif; font-size: 16px; line-height: 1.55; }
+    main { max-width: 640px; margin: 0 auto; padding: 24px 16px 48px; }
+    h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -.01em; }
+    h2 { font-size: 19px; margin: 28px 0 6px; color: var(--emerald-deep); }
+    p, li { color: var(--ink); margin: 6px 0; }
+    .meta { color: var(--ink-soft); font-size: 14px; margin-bottom: 20px; }
+    .card { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; margin: 14px 0; }
+    a { color: var(--emerald-deep); font-weight: 700; }
+    hr { border: 0; border-top: 1px solid var(--line); margin: 32px 0; }
+    .back { display: inline-block; margin-bottom: 16px; min-height: 44px; line-height: 44px; }
+  </style>
 </head>
-<body style="padding: 24px 16px; max-width: 640px; margin: 0 auto;">
-  <h1 style="font-size: 24px; font-weight: 800; margin-bottom: 12px;">Privacy Policy — FollowUp Buddy</h1>
-  <p style="font-size: 14px; color: var(--fub-ink-2); line-height: 1.6;">
-    <strong>FollowUp Buddy</strong> is an offline-first personal lead follow-up organizer built by Sakred Studio.
-  </p>
-  <h2 style="font-size: 16px; font-weight: 700; margin-top: 20px;">1. 100% Local-First Data Storage</h2>
-  <p style="font-size: 14px; color: var(--fub-ink-2); line-height: 1.6;">
-    All leads, contact handles, notes, tags, and follow-up schedules are stored locally on your device (`localStorage` key `fub.v1`). We do not upload your customer list or notes to external servers.
-  </p>
-  <h2 style="font-size: 16px; font-weight: 700; margin-top: 20px;">2. WhatsApp &amp; Instagram Links</h2>
-  <p style="font-size: 14px; color: var(--fub-ink-2); line-height: 1.6;">
-    When you tap WhatsApp or Instagram on a lead, FollowUp Buddy opens the official `wa.me` or `instagram.com` link in your browser or app so you can send the message yourself. FollowUp Buddy never sends automated messages on your behalf.
-  </p>
-  <h2 style="font-size: 16px; font-weight: 700; margin-top: 20px;">3. Backups &amp; Exports</h2>
-  <p style="font-size: 14px; color: var(--fub-ink-2); line-height: 1.6;">
-    You can export your data to JSON or CSV at any time from Settings, or clear all data from your browser storage.
-  </p>
-  <p style="margin-top: 24px;">
-    <a href="./index.html" class="btn primary sm" style="text-decoration: none; display: inline-flex;">← Back to FollowUp Buddy</a>
-  </p>
+<body>
+  <main>
+    <a class="back" href="./">← FollowUp Buddy</a>
+
+    <h1>Privacy Policy · प्राइवेसी पॉलिसी</h1>
+    <div class="meta">FollowUp Buddy by Sakred Studio · Effective 2026-10-24</div>
+
+    <div class="card">
+      <p><strong>Short version:</strong> everything you enter stays on your phone. FollowUp Buddy has no server, no account, no analytics, and never sends a message on your behalf.</p>
+      <p><strong>छोटा जवाब:</strong> आप जो भी लिखते हैं वह आपके फ़ोन पर ही रहता है। FollowUp Buddy का कोई सर्वर नहीं है, कोई अकाउंट नहीं, कोई ट्रैकिंग नहीं, और यह आपकी तरफ़ से कभी कोई मैसेज नहीं भेजता।</p>
+    </div>
+
+    <h2>What the app stores</h2>
+    <ul>
+      <li>The leads you add: name, WhatsApp number or Instagram handle, what they asked for, tags, priority, status, follow-up dates and the history notes you write.</li>
+      <li>Your own settings: language, theme, default follow-up delay, and your name / handle / business type if you choose to enter them.</li>
+    </ul>
+    <p>All of this is saved in your browser's local storage on your device (key <code>fub.v1</code>). It is not uploaded anywhere. If you uninstall the app or clear site data, it is gone, unless you used <em>Settings → Backup &amp; export</em> to save a JSON file. <em>Settings → Delete all data</em> wipes it instantly.</p>
+
+    <h2>What leaves your phone</h2>
+    <ul>
+      <li><strong>WhatsApp follow-ups.</strong> When you tap WhatsApp on a lead, the app opens <code>wa.me</code> with a pre-written message. Nothing is sent until you press Send inside WhatsApp. The message includes the lead's first name, what they asked for, and a short "sent with FollowUp Buddy" line with the app link.</li>
+      <li><strong>Instagram follow-ups.</strong> The app copies the same message to your clipboard and opens the lead's Instagram profile. You paste and send it yourself.</li>
+      <li><strong>Share.</strong> The Share button hands a text summary of one lead to your phone's share sheet. Where you send it is up to you.</li>
+      <li><strong>Backups.</strong> Export creates a JSON (or, on Pro, CSV) file on your device. Where you keep or share that file is up to you.</li>
+    </ul>
+
+    <h2>No tracking</h2>
+    <p>No analytics, no advertising SDKs, no cookies, no third-party fonts or scripts at runtime. The app works fully offline after the first load.</p>
+
+    <h2>Your customers' data</h2>
+    <p>The names and numbers you save belong to your customers. They stay on your phone only; the app never reads your contact list and never uploads anything. Please delete a lead if a customer asks you to.</p>
+
+    <h2>Children</h2>
+    <p>The app is a general-purpose tool for adults running a small business. It does not knowingly collect data from children.</p>
+
+    <h2>Contact</h2>
+    <p>Questions: <a href="mailto:sakredfamily@gmail.com">sakredfamily@gmail.com</a></p>
+
+    <hr>
+
+    <h2>हिंदी में</h2>
+    <p><strong>ऐप क्या सेव करता है:</strong> आपकी लीड्स (नाम, WhatsApp नंबर या Instagram हैंडल, उन्हें क्या चाहिए, टैग, प्राथमिकता, स्टेटस, फ़ॉलो-अप की तारीखें, नोट्स) और आपकी सेटिंग्स (भाषा, थीम, नाम / हैंडल)। यह सब आपके फ़ोन के ब्राउज़र स्टोरेज में रहता है, कहीं अपलोड नहीं होता।</p>
+    <p><strong>फ़ोन से बाहर क्या जाता है:</strong> सिर्फ़ वह WhatsApp या Instagram मैसेज जो आप खुद भेजते हैं। ऐप मैसेज तैयार करके चैट खोलता है; Send आप दबाते हैं।</p>
+    <p><strong>कोई ट्रैकिंग नहीं:</strong> कोई एनालिटिक्स नहीं, कोई विज्ञापन नहीं, कोई कुकी नहीं।</p>
+    <p><strong>डेटा हटाना:</strong> सेटिंग्स → "सारा डेटा हटाएँ" से सब कुछ तुरंत मिट जाता है।</p>
+    <p><strong>संपर्क:</strong> sakredfamily@gmail.com</p>
+  </main>
 </body>
 </html>

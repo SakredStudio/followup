@@ -668,6 +668,7 @@ button, input, select, textarea, a.tap-target {
   cursor: pointer;
   text-decoration: none;
 }
+.qa[disabled] { opacity: .4; cursor: not-allowed; }
 .qa .ico {
   width: 32px;
   height: 32px;
@@ -833,6 +834,12 @@ button, input, select, textarea, a.tap-target {
   background: #fff;
   box-shadow: 0 1px 3px rgba(0,0,0,.2);
   transition: left .15s;
+}
+.tog::before {
+  /* 44px tap target around the 26px visual track */
+  content: "";
+  position: absolute;
+  inset: -9px -4px;
 }
 .tog.on { background: var(--fub-emerald); }
 .tog.on::after { left: 21px; }

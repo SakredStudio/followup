@@ -1,13 +1,15 @@
 // FollowUp Buddy — Main Application Controller (P0–P5: Onboarding, Today, AddLeadSheet, LeadDetail, AllLeadsScreen, Settings, PWA)
 import { registerTranslations, t } from './lib/i18n.js';
-import { initials, avatarColor, relTime, shortDate, formatHeaderDate, formatINR } from './lib/format.js';
+import { isPlayBillingAvailable, getProPrices, activeProPlan, buyPro, MANAGE_SUBSCRIPTIONS_URL } from './lib/billing.js';
+import { initials, avatarColor, relTime, relPastTime, shortDate, formatHeaderDate, inr as formatINR } from './lib/format.js';
 import {
   loadState,
-  saveState,
   updateSettings,
+  clearAllData,
   getActiveLeadCount,
   canAddActiveLead,
   canAddTag,
+  addTag,
   createLead,
   updateLeadStatus,
   rescheduleFollowUp,
@@ -27,6 +29,7 @@ import {
   buildInstagramWebUrl,
   buildLeadSummaryText
 } from './lib/channels.js';
+import { normalizePhone } from './lib/phone.js';
 
 let appState = null;
 let snackTimer = null;
@@ -38,6 +41,10 @@ let uiState = {
   selectedLeadId: null,
   addSheetOpen: false,
   proSheetOpen: false,
+  billingAvailable: false,
+  billingBusy: false,
+  billingNotice: '',
+  proPrices: { monthly: '₹149', yearly: '₹999' },
   rescheduleSheetOpen: false,
   convertedSheetOpen: false,
   backupSheetOpen: false,
@@ -45,6 +52,7 @@ let uiState = {
   convertedValueDraft: '',
   noteDraft: '',
   snackMessage: null,
+  catchUp: null,
   // All Leads filters
   searchQuery: '',
   statusFilter: 'all',
@@ -58,7 +66,7 @@ let uiState = {
   draftInterest: '',
   draftFollowUpDays: 2,
   draftCustomDate: '',
-  draftTags: ['Cakes'],
+  draftTags: [],
   draftPriority: false
 };
 
@@ -125,7 +133,7 @@ function resetDraft() {
   uiState.draftInterest = '';
   uiState.draftFollowUpDays = appState?.settings?.defaultFollowUpDays || 2;
   uiState.draftCustomDate = '';
-  uiState.draftTags = ['Cakes'];
+  uiState.draftTags = [];
   uiState.draftPriority = false;
 }
 
@@ -290,9 +298,9 @@ function renderOnboardingScreen(lang) {
 function renderTodayScreen(lang) {
   const now = Date.now();
   const { overdue, today, upcoming } = categorize(appState.leads, now);
-  const catchUp = computeCatchUpBanner(appState.leads, appState.settings, now);
+  const catchUp = uiState.catchUp;
   const activeCount = getActiveLeadCount(appState);
-  const firstName = (appState.settings.sellerName || 'Priya').split(' ')[0];
+  const firstName = String(appState.settings.sellerName || '').trim().split(/\s+/)[0];
   const isEmpty = overdue.length === 0 && today.length === 0 && upcoming.length === 0;
   const showProCard = !appState.settings.isPro && activeCount / FREE_ACTIVE_LEAD_LIMIT >= 0.8;
 
@@ -303,20 +311,20 @@ function renderTodayScreen(lang) {
           <h1>${escapeHtml(t(lang, 'today_title'))}</h1>
           <div class="sub">${escapeHtml(formatHeaderDate(now))}</div>
         </div>
-        <button type="button" class="btn icon flat" id="btn-today-search" aria-label="Search">🔍</button>
+        <button type="button" class="btn icon flat" id="btn-today-search" aria-label="${escapeHtml(t(lang, 'search_placeholder'))}">🔍</button>
       </div>
 
       <div class="fub-content">
         ${
           catchUp
             ? `<div style="background:var(--fub-marigold-soft); color:#5e3d02; border-radius:12px; padding:10px 14px; margin-bottom:10px; font-size:13px; font-weight:600;">
-                 ⚠ ${escapeHtml(catchUp.text)}
+                 ⚠ ${escapeHtml(t(lang, 'today_catchup_banner', { days: catchUp.missedDays }))}
                </div>`
             : ''
         }
 
         <div class="today-hero">
-          <div class="greet">${escapeHtml(t(lang, 'today_greet', { firstName }))}</div>
+          <div class="greet">${escapeHtml(firstName ? t(lang, 'today_greet', { firstName }) : t(lang, 'today_greet_anon'))}</div>
           <div class="stat">
             <span id="today-hero-count">${today.length}</span>
             <small>${escapeHtml(t(lang, 'today_stat_suffix'))}</small>
@@ -416,8 +424,8 @@ function renderAllLeadsScreen(lang) {
   return `
     <div class="fub" data-screen="all">
       <div class="fub-bar">
-        <h1 style="flex:1;">${escapeHtml(t(lang, 'all_title'))}</h1>
-        <button type="button" class="btn flat sm ${uiState.showArchived ? 'primary' : ''}" id="btn-toggle-archived">
+        <h1 style="flex:1;">${escapeHtml(t(lang, 'all_leads_title'))}</h1>
+        <button type="button" class="btn flat sm ${uiState.showArchived ? 'primary' : ''}" id="btn-toggle-archived" aria-label="${escapeHtml(t(lang, 'settings_archived_leads'))}">
           🗄️ ${archivedTotal}
         </button>
       </div>
@@ -425,12 +433,12 @@ function renderAllLeadsScreen(lang) {
       <div class="fub-content">
         <div class="search">
           <span aria-hidden="true">🔍</span>
-          <input type="text" id="input-all-search"
+          <input type="text" id="input-all-search" aria-label="${escapeHtml(t(lang, 'search_placeholder'))}"
             value="${escapeHtml(uiState.searchQuery)}"
             placeholder="${escapeHtml(t(lang, 'search_placeholder'))}" />
           ${
             uiState.searchQuery
-              ? `<button type="button" id="btn-clear-search" class="btn icon flat" style="width:28px;height:28px;min-height:28px;">✕</button>`
+              ? `<button type="button" id="btn-clear-search" class="btn icon flat" style="width:36px;height:36px;min-height:36px;margin:4px 0;" aria-label="${escapeHtml(t(lang, 'btn_cancel'))}">✕</button>`
               : ''
           }
         </div>
@@ -488,7 +496,7 @@ function renderAllLeadsScreen(lang) {
         }
       </div>
 
-      <button type="button" class="fab" id="btn-fab-add" aria-label="Add Lead">+</button>
+      <button type="button" class="fab" id="btn-fab-add" aria-label="${escapeHtml(t(lang, 'fab_add_lead'))}">+</button>
     </div>
   `;
 }
@@ -503,7 +511,7 @@ function renderSettingsScreen(lang) {
         <h1 style="flex:1;">${escapeHtml(t(lang, 'settings_title'))}</h1>
         ${
           s.isPro
-            ? `<button type="button" class="chip pro" id="btn-toggle-pro-mode" style="border:none; cursor:pointer;">✨ PRO</button>`
+            ? `<span class="chip pro">✨ PRO</span>`
             : ''
         }
       </div>
@@ -528,8 +536,8 @@ function renderSettingsScreen(lang) {
           <div class="setting" id="setting-row-profile" style="cursor:pointer;">
             <div class="ico" style="background:var(--fub-emerald); color:#fff;">👤</div>
             <div class="text">
-              <div class="t">${escapeHtml(s.sellerName)}</div>
-              <div class="s">${escapeHtml(s.sellerHandle)} · ${escapeHtml(s.sellerBusiness)}</div>
+              <div class="t">${escapeHtml(s.sellerName || t(lang, 'profile_empty'))}</div>
+              <div class="s">${escapeHtml([s.sellerHandle, s.sellerBusiness].filter(Boolean).join(' · '))}</div>
             </div>
             <span style="color:var(--fub-ink-3);">›</span>
           </div>
@@ -542,8 +550,8 @@ function renderSettingsScreen(lang) {
           <div class="setting" id="setting-row-delay" style="cursor:pointer;">
             <div class="ico">🕒</div>
             <div class="text">
-              <div class="t">${escapeHtml(t(lang, 'setting_default_delay'))}</div>
-              <div class="s">${escapeHtml(t(lang, 'setting_default_delay_sub'))}</div>
+              <div class="t">${escapeHtml(t(lang, 'settings_default_delay'))}</div>
+              <div class="s">${escapeHtml(t(lang, 'settings_default_delay_sub'))}</div>
             </div>
             <div style="font-size:14px; font-weight:700; color:var(--fub-emerald);" id="setting-delay-val">${s.defaultFollowUpDays}d</div>
           </div>
@@ -551,21 +559,21 @@ function renderSettingsScreen(lang) {
           <div class="setting">
             <div class="ico">🔔</div>
             <div class="text">
-              <div class="t">${escapeHtml(t(lang, 'setting_reminders'))}</div>
-              <div class="s">${escapeHtml(t(lang, 'setting_reminders_sub'))}</div>
+              <div class="t">${escapeHtml(t(lang, 'settings_reminders'))}</div>
+              <div class="s">${escapeHtml(t(lang, 'settings_reminders_sub'))}</div>
             </div>
-            <button type="button" id="btn-toggle-reminders" aria-label="Toggle reminders"
-              class="tog ${s.remindersEnabled ? 'on' : ''}" style="border:none;"></button>
+            <button type="button" id="btn-toggle-reminders" aria-label="${escapeHtml(t(lang, 'settings_reminders'))}" aria-pressed="${s.reminderEnabled ? 'true' : 'false'}"
+              class="tog ${s.reminderEnabled ? 'on' : ''}" style="border:none;"></button>
           </div>
 
           <div class="setting">
             <div class="ico">✨</div>
             <div class="text">
-              <div class="t">${escapeHtml(t(lang, 'setting_morning_summary'))}</div>
-              <div class="s">${escapeHtml(t(lang, 'setting_morning_summary_sub'))}</div>
+              <div class="t">${escapeHtml(t(lang, 'settings_morning_summary'))}</div>
+              <div class="s">${escapeHtml(t(lang, 'settings_morning_summary_sub'))}</div>
             </div>
-            <button type="button" id="btn-toggle-morning" aria-label="Toggle morning summary"
-              class="tog ${s.morningSummaryEnabled ? 'on' : ''}" style="border:none;"></button>
+            <button type="button" id="btn-toggle-morning" aria-label="${escapeHtml(t(lang, 'settings_morning_summary'))}" aria-pressed="${s.morningSummary ? 'true' : 'false'}"
+              class="tog ${s.morningSummary ? 'on' : ''}" style="border:none;"></button>
           </div>
         </div>
 
@@ -576,7 +584,7 @@ function renderSettingsScreen(lang) {
           <div class="setting">
             <div class="ico cobalt">🌐</div>
             <div class="text">
-              <div class="t">${escapeHtml(t(lang, 'setting_language'))}</div>
+              <div class="t">${escapeHtml(t(lang, 'settings_language'))}</div>
               <div class="s">${s.language === 'en' ? 'English' : 'हिन्दी'}</div>
             </div>
             <div class="segmented" style="width:140px;">
@@ -588,29 +596,20 @@ function renderSettingsScreen(lang) {
           <div class="setting" id="setting-row-theme" style="cursor:pointer;">
             <div class="ico">🎨</div>
             <div class="text">
-              <div class="t">${escapeHtml(t(lang, 'setting_theme'))} · ${escapeHtml(t(lang, 'setting_density'))}</div>
+              <div class="t">${escapeHtml(t(lang, 'settings_theme'))} · ${escapeHtml(t(lang, 'settings_density'))}</div>
               <div class="s">${escapeHtml(s.theme)} · ${escapeHtml(s.density)}</div>
             </div>
             <div style="display:flex; gap:6px;">
-              <button type="button" class="btn sm ghost" id="btn-cycle-theme">${s.theme === 'dark' ? '🌙' : '☀️'}</button>
-              <button type="button" class="btn sm ghost" id="btn-cycle-density">${escapeHtml(s.density)}</button>
+              <button type="button" class="btn sm ghost" id="btn-cycle-theme" aria-label="${escapeHtml(t(lang, 'settings_theme'))}">${s.theme === 'dark' ? '🌙' : '☀️'}</button>
+              <button type="button" class="btn sm ghost" id="btn-cycle-density" aria-label="${escapeHtml(t(lang, 'settings_density'))}">${escapeHtml(s.density)}</button>
             </div>
           </div>
 
           <div class="setting" id="setting-row-backup" style="cursor:pointer;">
             <div class="ico warn">⬇️</div>
             <div class="text">
-              <div class="t">${escapeHtml(t(lang, 'setting_backup'))}</div>
-              <div class="s">${escapeHtml(t(lang, 'setting_backup_sub'))}</div>
-            </div>
-            <span style="color:var(--fub-ink-3);">›</span>
-          </div>
-
-          <div class="setting" id="setting-row-import-csv" style="cursor:pointer;">
-            <div class="ico">⬆️</div>
-            <div class="text">
-              <div class="t">${escapeHtml(t(lang, 'setting_import_csv'))}</div>
-              <div class="s"><span class="chip pro" style="font-size:10px; padding:1px 6px;">PRO</span></div>
+              <div class="t">${escapeHtml(t(lang, 'settings_backup_export'))}</div>
+              <div class="s">${escapeHtml(t(lang, 'settings_backup_export_sub'))}</div>
             </div>
             <span style="color:var(--fub-ink-3);">›</span>
           </div>
@@ -618,8 +617,8 @@ function renderSettingsScreen(lang) {
           <div class="setting" id="setting-row-archived" style="cursor:pointer;">
             <div class="ico">🗄️</div>
             <div class="text">
-              <div class="t">${escapeHtml(t(lang, 'setting_archived'))}</div>
-              <div class="s">${escapeHtml(t(lang, 'setting_archived_sub', { count: archivedCount }))}</div>
+              <div class="t">${escapeHtml(t(lang, 'settings_archived_leads'))}</div>
+              <div class="s">${escapeHtml(t(lang, 'settings_archived_leads_sub', { count: archivedCount }))}</div>
             </div>
             <span style="color:var(--fub-ink-3);">›</span>
           </div>
@@ -627,15 +626,24 @@ function renderSettingsScreen(lang) {
           <div class="setting" id="setting-row-seed" style="cursor:pointer;">
             <div class="ico">🌱</div>
             <div class="text">
-              <div class="t">${escapeHtml(t(lang, 'setting_seed_demo'))}</div>
-              <div class="s">${escapeHtml(t(lang, 'setting_seed_demo_sub'))}</div>
+              <div class="t">${escapeHtml(t(lang, 'settings_seed_demo'))}</div>
+              <div class="s">${escapeHtml(t(lang, 'settings_seed_demo_sub'))}</div>
+            </div>
+            <span style="color:var(--fub-ink-3);">›</span>
+          </div>
+
+          <div class="setting" id="setting-row-clear" style="cursor:pointer;">
+            <div class="ico" style="background:var(--fub-terracotta-soft); color:#8A2C1F;">🗑️</div>
+            <div class="text">
+              <div class="t" style="color:#8A2C1F;">${escapeHtml(t(lang, 'settings_clear_data'))}</div>
+              <div class="s">${escapeHtml(t(lang, 'settings_clear_data_sub'))}</div>
             </div>
             <span style="color:var(--fub-ink-3);">›</span>
           </div>
         </div>
 
         <div style="font-size:11px; color:var(--fub-ink-4); text-align:center; margin:16px 0; font-weight:500;">
-          ${escapeHtml(t(lang, 'footer_version'))} · <a href="./privacy.html" style="color:var(--fub-ink-3);">Privacy</a>
+          ${escapeHtml(t(lang, 'settings_footer'))} · <a href="./privacy.html" style="color:var(--fub-ink-3);">${escapeHtml(t(lang, 'privacy_link'))}</a>
         </div>
       </div>
     </div>
@@ -647,17 +655,17 @@ function renderBackupSheet(lang) {
     <div class="scrim" id="sheet-scrim"></div>
     <div class="sheet" id="sheet-backup">
       <div class="grab"></div>
-      <h2 style="margin:0 0 12px; font-size:18px; font-weight:800;">${escapeHtml(t(lang, 'setting_backup'))}</h2>
+      <h2 style="margin:0 0 12px; font-size:18px; font-weight:800;">${escapeHtml(t(lang, 'settings_backup_export'))}</h2>
       <div style="display:flex; flex-direction:column; gap:10px;">
         <button type="button" class="btn primary block" id="btn-export-json">
-          ⬇️ Export JSON Backup (Free)
+          ⬇️ ${escapeHtml(t(lang, 'backup_export_json'))}
         </button>
         <label class="btn ghost block" style="cursor:pointer; margin:0;">
-          ⬆️ Restore JSON Backup
+          ⬆️ ${escapeHtml(t(lang, 'backup_restore_json'))}
           <input type="file" id="input-import-json" accept="application/json,.json" style="display:none;" />
         </label>
         <button type="button" class="btn ghost block" id="btn-export-csv">
-          📊 Export CSV ${appState.settings.isPro ? '(Pro)' : '🔒 PRO'}
+          📊 ${escapeHtml(t(lang, 'backup_export_csv'))} ${appState.settings.isPro ? '' : '🔒 PRO'}
         </button>
         <button type="button" class="btn flat block" id="btn-close-backup-sheet">
           ${escapeHtml(t(lang, 'btn_cancel'))}
@@ -679,16 +687,16 @@ function renderProfileSheet(lang) {
         <input id="profile-name-in" type="text" required value="${escapeHtml(s.sellerName)}" />
       </div>
       <div class="field">
-        <label for="profile-handle-in">Instagram / Handle</label>
+        <label for="profile-handle-in">${escapeHtml(t(lang, 'profile_handle_label'))}</label>
         <input id="profile-handle-in" type="text" value="${escapeHtml(s.sellerHandle)}" />
       </div>
       <div class="field">
-        <label for="profile-biz-in">Business Type</label>
+        <label for="profile-biz-in">${escapeHtml(t(lang, 'profile_business_label'))}</label>
         <input id="profile-biz-in" type="text" value="${escapeHtml(s.sellerBusiness)}" />
       </div>
       <div style="display:flex; gap:10px; margin-top:12px;">
         <button type="button" class="btn ghost" id="btn-close-profile-sheet" style="flex:1;">${escapeHtml(t(lang, 'btn_cancel'))}</button>
-        <button type="submit" class="btn primary" style="flex:2;">✓ Save</button>
+        <button type="submit" class="btn primary" style="flex:2;">✓ ${escapeHtml(t(lang, 'btn_save'))}</button>
       </div>
     </form>
   `;
@@ -703,13 +711,15 @@ function renderLeadDetailScreen(lang) {
   const now = Date.now();
   const events = getLeadEvents(appState, lead.id);
   const tags = Array.isArray(lead.tags) ? lead.tags : [];
+  const canWa = normalizePhone(lead.handle).length >= 10;
+  const canIg = Boolean(lead.handle) && !canWa;
 
   return `
     <div class="fub" data-screen="detail" data-lead-id="${escapeHtml(lead.id)}">
       <div class="fub-bar">
-        <button type="button" class="btn icon flat" id="btn-detail-back" aria-label="Back">←</button>
+        <button type="button" class="btn icon flat" id="btn-detail-back" aria-label="${escapeHtml(t(lang, 'btn_back'))}">←</button>
         <h1 style="font-size:16px; font-weight:600;">${escapeHtml(t(lang, 'detail_title'))}</h1>
-        <button type="button" class="btn icon flat" id="btn-detail-archive" title="Archive lead" aria-label="Archive">🗄️</button>
+        <button type="button" class="btn icon flat" id="btn-detail-archive" aria-label="${escapeHtml(t(lang, lead.archived ? 'btn_unarchive' : 'btn_archive'))}">🗄️</button>
       </div>
 
       <div class="fub-content no-pad">
@@ -729,17 +739,17 @@ function renderLeadDetailScreen(lang) {
           </div>
 
           <div class="quick-actions">
-            <button type="button" class="qa wa" id="btn-qa-whatsapp">
+            <button type="button" class="qa wa" id="btn-qa-whatsapp" ${canWa ? '' : 'disabled'}>
               <div class="ico">💬</div>
               ${escapeHtml(t(lang, 'qa_whatsapp'))}
             </button>
-            <button type="button" class="qa ig" id="btn-qa-instagram">
+            <button type="button" class="qa ig" id="btn-qa-instagram" ${canIg ? '' : 'disabled'}>
               <div class="ico">📸</div>
               ${escapeHtml(t(lang, 'qa_instagram'))}
             </button>
             <button type="button" class="qa copy" id="btn-qa-copy">
               <div class="ico">📋</div>
-              ${escapeHtml(t(lang, 'qa_copy_msg'))}
+              ${escapeHtml(t(lang, 'qa_copy'))}
             </button>
             <button type="button" class="qa" id="btn-qa-share">
               <div class="ico">📤</div>
@@ -788,10 +798,10 @@ function renderLeadDetailScreen(lang) {
             <h2>${escapeHtml(t(lang, 'section_history'))}</h2>
           </div>
           <form id="form-add-note" style="display:flex; gap:8px; margin-bottom:10px;">
-            <input type="text" id="input-lead-note" placeholder="Add follow-up note…"
+            <input type="text" id="input-lead-note" placeholder="${escapeHtml(t(lang, 'note_placeholder'))}" aria-label="${escapeHtml(t(lang, 'note_placeholder'))}"
               value="${escapeHtml(uiState.noteDraft)}"
               style="flex:1; height:40px; border-radius:10px; border:1.5px solid var(--fub-line); background:var(--fub-card); padding:0 12px; font-size:13px;" />
-            <button type="submit" class="btn sm ghost">+ Note</button>
+            <button type="submit" class="btn sm ghost">${escapeHtml(t(lang, 'btn_add_note'))}</button>
           </form>
           <div class="timeline" id="detail-timeline">
             ${events
@@ -800,7 +810,7 @@ function renderLeadDetailScreen(lang) {
                   <div class="row">
                     <div class="dot ${i === 0 ? '' : 'muted'}"></div>
                     <div>
-                      <div class="when">${escapeHtml(relTime(ev.createdAt, now))} · ${escapeHtml(shortDate(ev.createdAt))}</div>
+                      <div class="when">${escapeHtml(relPastTime(ev.createdAt, now))} · ${escapeHtml(shortDate(ev.createdAt))}</div>
                       <div class="what">${escapeHtml(ev.body)}</div>
                     </div>
                   </div>
@@ -814,13 +824,13 @@ function renderLeadDetailScreen(lang) {
           </div>
           <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:24px;">
             <button type="button" class="btn primary sm" id="btn-outcome-converted">
-              ✓ ${escapeHtml(t(lang, 'btn_converted'))}
+              ✓ ${escapeHtml(t(lang, 'outcome_converted'))}
             </button>
             <button type="button" class="btn flat sm" id="btn-outcome-not-interested">
-              ${escapeHtml(t(lang, 'btn_not_interested'))}
+              ${escapeHtml(t(lang, 'outcome_not_interested'))}
             </button>
             <button type="button" class="btn danger sm" id="btn-outcome-lost">
-              ${escapeHtml(t(lang, 'btn_lost'))}
+              ${escapeHtml(t(lang, 'outcome_lost'))}
             </button>
           </div>
         </div>
@@ -862,22 +872,22 @@ function renderConvertedSheet(lang) {
     <div class="scrim" id="sheet-scrim"></div>
     <form class="sheet" id="form-converted-value">
       <div class="grab"></div>
-      <h2 style="margin:0 0 8px; font-size:18px; font-weight:800;">🎉 ${escapeHtml(t(lang, 'btn_converted'))}</h2>
+      <h2 style="margin:0 0 8px; font-size:18px; font-weight:800;">🎉 ${escapeHtml(t(lang, 'outcome_converted'))}</h2>
       <div class="field">
-        <label for="input-converted-value">Order Value (₹ optional)</label>
+        <label for="input-converted-value">${escapeHtml(t(lang, 'converted_value_label'))}</label>
         <input type="number" id="input-converted-value" min="0" step="1" placeholder="e.g. 2400"
           value="${escapeHtml(uiState.convertedValueDraft)}" />
       </div>
       <div style="display:flex; gap:10px; margin-top:12px;">
-        <button type="button" class="btn ghost" id="btn-skip-converted-value" style="flex:1;">Skip ₹</button>
-        <button type="submit" class="btn primary" style="flex:2;">✓ ${escapeHtml(t(lang, 'btn_converted'))}</button>
+        <button type="button" class="btn ghost" id="btn-skip-converted-value" style="flex:1;">${escapeHtml(t(lang, 'btn_skip_value'))}</button>
+        <button type="submit" class="btn primary" style="flex:2;">✓ ${escapeHtml(t(lang, 'outcome_converted'))}</button>
       </div>
     </form>
   `;
 }
 
 function renderAddLeadSheet(lang) {
-  const suggested = appState.tags.slice(0, 6).map((tg) => tg.name);
+  const suggested = Array.from(new Set([...appState.tags.slice(0, 6).map((tg) => tg.name), ...uiState.draftTags]));
   const delayOpts = [
     { d: 1, lbl: t(lang, 'delay_tomorrow') },
     { d: 2, lbl: t(lang, 'delay_2d') },
@@ -894,7 +904,7 @@ function renderAddLeadSheet(lang) {
         <h2 style="margin:0; font-size:20px; font-weight:800; letter-spacing:-.01em; flex:1;">
           ${escapeHtml(t(lang, 'sheet_new_lead_title'))}
         </h2>
-        <button type="button" class="btn icon flat" id="btn-close-add-sheet" aria-label="Close">✕</button>
+        <button type="button" class="btn icon flat" id="btn-close-add-sheet" aria-label="${escapeHtml(t(lang, 'btn_cancel'))}">✕</button>
       </div>
 
       <div class="field">
@@ -917,7 +927,7 @@ function renderAddLeadSheet(lang) {
             ${escapeHtml(t(lang, 'source_other'))}
           </button>
         </div>
-        <input id="lead-handle-input" name="handle" type="text"
+        <input id="lead-handle-input" name="handle" type="text" aria-label="${escapeHtml(t(lang, 'field_source_handle'))}"
           value="${escapeHtml(uiState.draftHandle)}"
           placeholder="${escapeHtml(uiState.draftSource === 'whatsapp' ? t(lang, 'placeholder_wa') : t(lang, 'placeholder_ig'))}" />
       </div>
@@ -984,6 +994,26 @@ function renderAddLeadSheet(lang) {
 }
 
 function renderProUpsellSheet(lang) {
+  const busy = uiState.billingBusy ? 'disabled' : '';
+  const notice = uiState.billingNotice
+    ? `<p style="font-weight:700; margin:0 0 10px;">${escapeHtml(uiState.billingNotice)}</p>`
+    : '';
+  let body;
+  if (appState.settings.isPro) {
+    body = `
+      <p>${escapeHtml(t(lang, 'pro_active'))}</p>
+      <a class="btn sm ghost" style="color:#fff; border-color:rgba(255,255,255,.35); display:inline-flex;" href="${MANAGE_SUBSCRIPTIONS_URL}" target="_blank" rel="noopener">${escapeHtml(t(lang, 'pro_manage'))}</a>`;
+  } else if (uiState.billingAvailable) {
+    body = `
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <button type="button" id="btn-buy-pro-monthly" class="btn sm" ${busy}>✨ ${escapeHtml(t(lang, 'pro_plan_monthly', { price: uiState.proPrices.monthly }))}</button>
+        <button type="button" id="btn-buy-pro-yearly" class="btn sm" ${busy}>⭐ ${escapeHtml(t(lang, 'pro_plan_yearly', { price: uiState.proPrices.yearly }))}</button>
+        <button type="button" id="btn-restore-pro" class="btn sm ghost" style="color:#fff; border-color:rgba(255,255,255,.35);" ${busy}>${escapeHtml(t(lang, 'pro_restore'))}</button>
+      </div>
+      <p style="font-size:12px; opacity:.85; margin:10px 0 0;">${escapeHtml(t(lang, 'pro_renew_note'))}</p>`;
+  } else {
+    body = `<p>${escapeHtml(t(lang, 'pro_unavailable'))}</p>`;
+  }
   return `
     <div class="scrim" id="sheet-scrim"></div>
     <div class="sheet">
@@ -991,12 +1021,11 @@ function renderProUpsellSheet(lang) {
       <div class="pro-card">
         <h3>${escapeHtml(t(lang, 'pro_card_settings_title'))}</h3>
         <p>${escapeHtml(t(lang, 'pro_card_settings_body'))}</p>
-        <div style="display:flex; gap:8px;">
-          <button type="button" id="btn-activate-pro" class="btn sm">
-            ✨ ${escapeHtml(t(lang, 'pro_card_settings_cta'))}
-          </button>
+        ${notice}
+        ${body}
+        <div style="margin-top:10px;">
           <button type="button" id="btn-close-pro-sheet" class="btn sm ghost" style="color:#fff; border-color:rgba(255,255,255,.35);">
-            ${escapeHtml(t(lang, 'btn_cancel'))}
+            ${escapeHtml(t(lang, 'btn_close'))}
           </button>
         </div>
       </div>
@@ -1198,13 +1227,6 @@ function bindEvents(lang) {
     });
   }
 
-  const toggleProModeBtn = root.querySelector('#btn-toggle-pro-mode');
-  if (toggleProModeBtn) {
-    toggleProModeBtn.addEventListener('click', () => {
-      appState = updateSettings(appState, { isPro: !appState.settings.isPro });
-      renderApp();
-    });
-  }
 
   const rowProfile = root.querySelector('#setting-row-profile');
   if (rowProfile) {
@@ -1253,11 +1275,11 @@ function bindEvents(lang) {
   const togRem = root.querySelector('#btn-toggle-reminders');
   if (togRem) {
     togRem.addEventListener('click', () => {
-      const next = !appState.settings.remindersEnabled;
+      const next = !appState.settings.reminderEnabled;
       if (next && typeof Notification !== 'undefined' && Notification.permission === 'default') {
         Notification.requestPermission().catch(() => {});
       }
-      appState = updateSettings(appState, { remindersEnabled: next });
+      appState = updateSettings(appState, { reminderEnabled: next });
       renderApp();
     });
   }
@@ -1266,7 +1288,7 @@ function bindEvents(lang) {
   if (togMorn) {
     togMorn.addEventListener('click', () => {
       appState = updateSettings(appState, {
-        morningSummaryEnabled: !appState.settings.morningSummaryEnabled
+        morningSummary: !appState.settings.morningSummary
       });
       renderApp();
     });
@@ -1322,7 +1344,7 @@ function bindEvents(lang) {
       const json = exportBackupJson(appState);
       triggerFileDownload('followup-buddy-backup.json', json, 'application/json');
       uiState.backupSheetOpen = false;
-      showSnack('JSON backup downloaded');
+      showSnack(t(lang, 'snack_backup_downloaded'));
       renderApp();
     });
   }
@@ -1336,10 +1358,10 @@ function bindEvents(lang) {
         const text = await file.text();
         appState = importBackupJson(text);
         uiState.backupSheetOpen = false;
-        showSnack('Backup restored');
+        showSnack(t(lang, 'snack_backup_restored'));
         renderApp();
       } catch (_) {
-        showSnack('Invalid backup JSON');
+        showSnack(t(lang, 'snack_backup_invalid'));
         renderApp();
       }
     });
@@ -1352,7 +1374,7 @@ function bindEvents(lang) {
         const csv = exportLeadsCsv(appState);
         triggerFileDownload('followup-buddy-leads.csv', csv, 'text/csv;charset=utf-8');
         uiState.backupSheetOpen = false;
-        showSnack('CSV exported');
+        showSnack(t(lang, 'snack_csv_exported'));
         renderApp();
       } catch (err) {
         if (err && err.code === 'PRO_REQUIRED') {
@@ -1360,19 +1382,6 @@ function bindEvents(lang) {
           uiState.proSheetOpen = true;
           renderApp();
         }
-      }
-    });
-  }
-
-  const rowImportCsv = root.querySelector('#setting-row-import-csv');
-  if (rowImportCsv) {
-    rowImportCsv.addEventListener('click', () => {
-      if (!appState.settings.isPro) {
-        uiState.proSheetOpen = true;
-        renderApp();
-      } else {
-        uiState.backupSheetOpen = true;
-        renderApp();
       }
     });
   }
@@ -1390,8 +1399,23 @@ function bindEvents(lang) {
   const rowSeed = root.querySelector('#setting-row-seed');
   if (rowSeed) {
     rowSeed.addEventListener('click', () => {
+      if (appState.leads.length > 0 && !window.confirm(t(lang, 'seed_confirm'))) return;
       appState = seedSampleLeads(appState, globalThis.localStorage, Date.now());
-      showSnack('14 demo leads loaded');
+      showSnack(t(lang, 'snack_seeded'));
+      renderApp();
+    });
+  }
+
+  const rowClear = root.querySelector('#setting-row-clear');
+  if (rowClear) {
+    rowClear.addEventListener('click', () => {
+      if (!window.confirm(t(lang, 'clear_data_confirm'))) return;
+      appState = clearAllData();
+      uiState.tab = 'today';
+      uiState.screen = 'onboarding';
+      uiState.onbStep = 0;
+      uiState.catchUp = null;
+      showSnack(t(lang, 'snack_data_cleared'));
       renderApp();
     });
   }
@@ -1424,7 +1448,7 @@ function bindEvents(lang) {
       const nextArchived = !(lead && lead.archived);
       appState = archiveLead(appState, uiState.selectedLeadId, nextArchived);
       uiState.screen = uiState.prevScreen || 'today';
-      showSnack(nextArchived ? 'Lead archived' : 'Lead unarchived');
+      showSnack(t(lang, nextArchived ? 'snack_archived' : 'snack_unarchived'));
       renderApp();
     });
   }
@@ -1436,8 +1460,8 @@ function bindEvents(lang) {
   const qaWa = root.querySelector('#btn-qa-whatsapp');
   if (qaWa && currentLead) {
     qaWa.addEventListener('click', () => {
-      const msg = buildFollowUpMessage(currentLead, appState.settings.includeShareLine !== false);
-      const url = buildWhatsAppUrl(currentLead.handle, msg, appState.settings.defaultCountryCode || '91');
+      const msg = buildFollowUpMessage(currentLead, true, t(lang, 'followup_template'));
+      const url = buildWhatsAppUrl(currentLead.handle, msg);
       if (typeof window !== 'undefined' && window.open) {
         window.open(url, '_blank', 'noopener,noreferrer');
       }
@@ -1450,7 +1474,7 @@ function bindEvents(lang) {
   const qaIg = root.querySelector('#btn-qa-instagram');
   if (qaIg && currentLead) {
     qaIg.addEventListener('click', async () => {
-      const msg = buildFollowUpMessage(currentLead, appState.settings.includeShareLine !== false);
+      const msg = buildFollowUpMessage(currentLead, true, t(lang, 'followup_template'));
       await copyTextToClipboard(msg);
       const url = buildInstagramWebUrl(currentLead.handle);
       if (typeof window !== 'undefined' && window.open) {
@@ -1465,9 +1489,9 @@ function bindEvents(lang) {
   const qaCopy = root.querySelector('#btn-qa-copy');
   if (qaCopy && currentLead) {
     qaCopy.addEventListener('click', async () => {
-      const msg = buildFollowUpMessage(currentLead, appState.settings.includeShareLine !== false);
+      const msg = buildFollowUpMessage(currentLead, true, t(lang, 'followup_template'));
       await copyTextToClipboard(msg);
-      showSnack(t(lang, 'snack_msg_copied'));
+      showSnack(t(lang, 'snack_copied'));
       renderApp();
     });
   }
@@ -1504,7 +1528,8 @@ function bindEvents(lang) {
       const days = Number(btn.getAttribute('data-days') || 2);
       appState = rescheduleFollowUp(appState, currentLead.id, days);
       uiState.rescheduleSheetOpen = false;
-      showSnack(t(lang, 'snack_lead_saved', { days }));
+      const updated = appState.leads.find((l) => l.id === currentLead.id);
+      showSnack(t(lang, 'snack_rescheduled', { relTime: relTime(updated ? updated.nextFollowUpAt : Date.now()) }));
       renderApp();
     });
   });
@@ -1552,7 +1577,7 @@ function bindEvents(lang) {
         rawVal && rawVal > 0 ? rawVal : null
       );
       uiState.convertedSheetOpen = false;
-      showSnack(t(lang, 'snack_marked_status', { status: 'converted' }));
+      showSnack(t(lang, 'snack_converted'));
       renderApp();
     });
   }
@@ -1562,7 +1587,7 @@ function bindEvents(lang) {
     skipConvertedValBtn.addEventListener('click', () => {
       appState = updateLeadStatus(appState, currentLead.id, 'converted', null);
       uiState.convertedSheetOpen = false;
-      showSnack(t(lang, 'snack_marked_status', { status: 'converted' }));
+      showSnack(t(lang, 'snack_converted'));
       renderApp();
     });
   }
@@ -1571,7 +1596,7 @@ function bindEvents(lang) {
   if (btnNotInt && currentLead) {
     btnNotInt.addEventListener('click', () => {
       appState = updateLeadStatus(appState, currentLead.id, 'not_interested');
-      showSnack(t(lang, 'snack_marked_status', { status: 'not interested' }));
+      showSnack(t(lang, 'snack_not_interested'));
       renderApp();
     });
   }
@@ -1580,7 +1605,7 @@ function bindEvents(lang) {
   if (btnLost && currentLead) {
     btnLost.addEventListener('click', () => {
       appState = updateLeadStatus(appState, currentLead.id, 'lost');
-      showSnack(t(lang, 'snack_marked_status', { status: 'lost' }));
+      showSnack(t(lang, 'snack_lost'));
       renderApp();
     });
   }
@@ -1672,7 +1697,20 @@ function bindEvents(lang) {
         uiState.addSheetOpen = false;
         uiState.proSheetOpen = true;
         renderApp();
+        return;
       }
+      const name = String(window.prompt(t(lang, 'tag_new_prompt')) || '').trim();
+      if (!name) return;
+      try {
+        appState = addTag(appState, name);
+        const created = appState.tags.find((tg) => tg.name.toLowerCase() === name.toLowerCase());
+        if (created && !uiState.draftTags.includes(created.name)) {
+          uiState.draftTags = [...uiState.draftTags, created.name];
+        }
+      } catch (_) {
+        // tag limit hit between render and click; upsell on next render
+      }
+      renderApp();
     });
   }
 
@@ -1704,11 +1742,41 @@ function bindEvents(lang) {
     });
   }
 
-  const activateProBtn = root.querySelector('#btn-activate-pro');
-  if (activateProBtn) {
-    activateProBtn.addEventListener('click', () => {
-      appState = updateSettings(appState, { isPro: true });
-      uiState.proSheetOpen = false;
+  for (const plan of ['monthly', 'yearly']) {
+    const buyBtn = root.querySelector(`#btn-buy-pro-${plan}`);
+    if (buyBtn) {
+      buyBtn.addEventListener('click', async () => {
+        if (uiState.billingBusy) return;
+        uiState.billingBusy = true;
+        uiState.billingNotice = '';
+        renderApp();
+        try {
+          await buyPro(plan);
+          appState = updateSettings(appState, { isPro: true, proPlan: plan });
+          uiState.billingNotice = '';
+        } catch (err) {
+          uiState.billingNotice = t(lang, err && err.code === 'cancelled' ? 'purchase_cancelled' : 'purchase_failed');
+        }
+        uiState.billingBusy = false;
+        renderApp();
+      });
+    }
+  }
+
+  const restoreProBtn = root.querySelector('#btn-restore-pro');
+  if (restoreProBtn) {
+    restoreProBtn.addEventListener('click', async () => {
+      if (uiState.billingBusy) return;
+      uiState.billingBusy = true;
+      renderApp();
+      const plan = await activeProPlan();
+      if (plan) {
+        appState = updateSettings(appState, { isPro: true, proPlan: plan });
+        uiState.billingNotice = '';
+      } else {
+        uiState.billingNotice = t(lang, 'no_purchase_found');
+      }
+      uiState.billingBusy = false;
       renderApp();
     });
   }
@@ -1725,12 +1793,25 @@ function bindEvents(lang) {
 export async function initApp() {
   await loadDictionaries();
   appState = loadState();
-  if (appState.leads.length === 0 && !appState.settings.hasOnboarded) {
-    appState = seedSampleLeads(appState, globalThis.localStorage, Date.now());
-  }
+  uiState.catchUp = computeCatchUpBanner(appState.leads, appState.settings, Date.now());
+  appState = updateSettings(appState, { lastOpenedAt: Date.now() });
   uiState.screen = appState.settings.hasOnboarded ? 'today' : 'onboarding';
-  saveState(appState);
   renderApp();
+  // Play Billing: only inside the Play-installed app. Entitlement follows the active subscription.
+  try {
+    uiState.billingAvailable = await isPlayBillingAvailable();
+    if (uiState.billingAvailable) {
+      const [prices, plan] = await Promise.all([getProPrices(), activeProPlan()]);
+      uiState.proPrices = prices;
+      const isPro = plan !== null;
+      if (isPro !== Boolean(appState.settings.isPro)) {
+        appState = updateSettings(appState, { isPro, proPlan: plan });
+        renderApp();
+      }
+    }
+  } catch {
+    /* billing is optional */
+  }
   if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
