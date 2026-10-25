@@ -27,26 +27,40 @@
     <a class="back" href="./">← FollowUp Buddy</a>
 
     <h1>Privacy Policy · प्राइवेसी पॉलिसी</h1>
-    <div class="meta">FollowUp Buddy by Sakred Studio · Effective 2026-10-24</div>
+    <div class="meta">FollowUp Buddy by Sakred Studio · Effective 2026-10-25 (v3)</div>
 
     <div class="card">
-      <p><strong>Short version:</strong> everything you enter stays on your phone. FollowUp Buddy has no server, no account, no analytics, and never sends a message on your behalf.</p>
-      <p><strong>छोटा जवाब:</strong> आप जो भी लिखते हैं वह आपके फ़ोन पर ही रहता है। FollowUp Buddy का कोई सर्वर नहीं है, कोई अकाउंट नहीं, कोई ट्रैकिंग नहीं, और यह आपकी तरफ़ से कभी कोई मैसेज नहीं भेजता।</p>
+      <p><strong>Short version:</strong> everything you enter stays on your phone. FollowUp Buddy has no account, no analytics, and never sends a message on your behalf. The only optional server feature is the Pro encrypted cloud backup, which is off until you switch it on and can only ever see scrambled data.</p>
+      <p><strong>छोटा जवाब:</strong> आप जो भी लिखते हैं वह आपके फ़ोन पर ही रहता है। FollowUp Buddy का कोई अकाउंट नहीं, कोई ट्रैकिंग नहीं, और यह आपकी तरफ़ से कभी कोई मैसेज नहीं भेजता। सिर्फ़ Pro का एन्क्रिप्टेड क्लाउड बैकअप एक वैकल्पिक सर्वर फ़ीचर है — यह तब तक बंद रहता है जब तक आप चालू न करें, और सर्वर को सिर्फ़ गड़बड़ किया हुआ डेटा दिखता है।</p>
     </div>
 
     <h2>What the app stores</h2>
     <ul>
-      <li>The leads you add: name, WhatsApp number or Instagram handle, what they asked for, tags, priority, status, follow-up dates and the history notes you write.</li>
-      <li>Your own settings: language, theme, default follow-up delay, and your name / handle / business type if you choose to enter them.</li>
+      <li>The leads you add: name, WhatsApp number or Instagram handle, what they asked for, tags, priority, status and pipeline stage, follow-up dates and the history notes you write (each note can carry the name you gave this phone).</li>
+      <li>Your own settings: language, theme, default follow-up delay, reminder hour and quiet hours, message templates, this phone's name, and your name / handle / business type / WhatsApp number if you choose to enter them.</li>
+      <li><strong>Catalogue photos</strong> (v3): product photos you pick are resized on your phone to 800 px and stored in your browser's IndexedDB on this device. They leave the phone only inside a product card you share yourself.</li>
     </ul>
-    <p>All of this is saved in your browser's local storage on your device (key <code>fub.v1</code>). It is not uploaded anywhere. If you uninstall the app or clear site data, it is gone, unless you used <em>Settings → Backup &amp; export</em> to save a JSON file. <em>Settings → Delete all data</em> wipes it instantly.</p>
+    <p>All of this is saved in your browser's local storage on your device (key <code>fub.v1</code>) and IndexedDB (<code>fub-photos</code>). It is not uploaded anywhere unless you turn on cloud backup (below). If you uninstall the app or clear site data, it is gone, unless you used <em>Settings → Backup &amp; export</em> to save a JSON file. <em>Settings → Delete all data</em> wipes it instantly, photos included.</p>
 
     <h2>What leaves your phone</h2>
     <ul>
-      <li><strong>WhatsApp follow-ups.</strong> When you tap WhatsApp on a lead, the app opens <code>wa.me</code> with a pre-written message. Nothing is sent until you press Send inside WhatsApp. The message includes the lead's first name, what they asked for, and a short "sent with FollowUp Buddy" line with the app link.</li>
+      <li><strong>WhatsApp follow-ups.</strong> When you tap WhatsApp on a lead, the app opens <code>wa.me</code> with a pre-written message (the default one or the template you attached to the lead's tag). Nothing is sent until you press Send inside WhatsApp. The message includes the lead's first name, what they asked for, and a short "sent with FollowUp Buddy" line with the app link.</li>
       <li><strong>Instagram follow-ups.</strong> The app copies the same message to your clipboard and opens the lead's Instagram profile. You paste and send it yourself.</li>
-      <li><strong>Share.</strong> The Share button hands a text summary of one lead to your phone's share sheet. Where you send it is up to you.</li>
+      <li><strong>Share.</strong> The Share button hands a text summary of one lead to your phone's share sheet. <em>Send product card</em> hands a product image + message to the share sheet (or saves the image to your downloads). Where you send it is up to you.</li>
+      <li><strong>Share into the app.</strong> If you share a contact, profile link or text into FollowUp Buddy from another app, the app only reads what you shared to prefill a new lead. It never reads your contacts or chats.</li>
+      <li><strong>"Send me today's list".</strong> Opens a WhatsApp chat with <em>your own</em> number and today's list pre-typed. You press Send.</li>
+      <li><strong>Reminders.</strong> The daily "N leads today" notification is built on your phone (by the app or its service worker). No push server is involved.</li>
       <li><strong>Backups.</strong> Export creates a JSON (or, on Pro, CSV) file on your device. Where you keep or share that file is up to you.</li>
+    </ul>
+
+    <h2>Cloud backup &amp; team sharing (Pro, optional)</h2>
+    <ul>
+      <li><strong>Opt-in.</strong> Nothing is uploaded until you create a vault in <em>Settings → Cloud backup</em>. In builds where the backup server is not switched on, the screen says "Not available yet".</li>
+      <li><strong>Encrypted on your phone.</strong> Your backup is encrypted on the device with a key derived from your passphrase (PBKDF2, 200 000 rounds, SHA-256 → AES-GCM-256). The passphrase never leaves the phone. The server stores only scrambled data (<code>salt, iv, data</code>), a timestamp and a random vault code; it cannot read your leads, and neither can we. If you forget the passphrase the backup cannot be recovered.</li>
+      <li><strong>Identity.</strong> The random 32-character vault code is the only identifier. No account, no email, no phone number is sent.</li>
+      <li><strong>Team of two.</strong> Sharing with an assistant means giving them the same vault code and passphrase; both phones then read and write the same encrypted vault. Anyone holding both can read and edit the list, so share the passphrase in person.</li>
+      <li><strong>Deleting.</strong> <em>Delete cloud copy</em> removes the vault from the server. <em>Forget vault on this phone</em> removes the code and key from this phone only.</li>
+      <li><strong>Server.</strong> A Cloudflare Worker + D1 database operated by Sakred Studio; data cap 2 MB per vault; request rate limits per IP; no logs of vault contents.</li>
     </ul>
 
     <h2>No tracking</h2>
@@ -64,8 +78,9 @@
     <hr>
 
     <h2>हिंदी में</h2>
-    <p><strong>ऐप क्या सेव करता है:</strong> आपकी लीड्स (नाम, WhatsApp नंबर या Instagram हैंडल, उन्हें क्या चाहिए, टैग, प्राथमिकता, स्टेटस, फ़ॉलो-अप की तारीखें, नोट्स) और आपकी सेटिंग्स (भाषा, थीम, नाम / हैंडल)। यह सब आपके फ़ोन के ब्राउज़र स्टोरेज में रहता है, कहीं अपलोड नहीं होता।</p>
-    <p><strong>फ़ोन से बाहर क्या जाता है:</strong> सिर्फ़ वह WhatsApp या Instagram मैसेज जो आप खुद भेजते हैं। ऐप मैसेज तैयार करके चैट खोलता है; Send आप दबाते हैं।</p>
+    <p><strong>ऐप क्या सेव करता है:</strong> आपकी लीड्स (नाम, WhatsApp नंबर या Instagram हैंडल, उन्हें क्या चाहिए, टैग, प्राथमिकता, स्टेटस, फ़ॉलो-अप की तारीखें, नोट्स), आपके कैटलॉग प्रोडक्ट और उनकी फ़ोटो (फ़ोन पर ही 800 px में छोटी करके), और आपकी सेटिंग्स (भाषा, थीम, नाम / हैंडल / नंबर, टेम्पलेट)। यह सब आपके फ़ोन के ब्राउज़र स्टोरेज में रहता है, कहीं अपलोड नहीं होता।</p>
+    <p><strong>फ़ोन से बाहर क्या जाता है:</strong> सिर्फ़ वह WhatsApp या Instagram मैसेज या प्रोडक्ट कार्ड जो आप खुद भेजते हैं। ऐप मैसेज तैयार करके चैट खोलता है; Send आप दबाते हैं।</p>
+    <p><strong>क्लाउड बैकअप (Pro, वैकल्पिक):</strong> जब तक आप वॉल्ट न बनाएँ, कुछ अपलोड नहीं होता। बैकअप आपके फ़ोन पर आपके पासफ़्रेज़ से एन्क्रिप्ट होता है; सर्वर को सिर्फ़ गड़बड़ किया हुआ डेटा और एक रैंडम वॉल्ट कोड दिखता है — न आपकी लीड्स, न कोई अकाउंट। पासफ़्रेज़ भूल गए तो बैकअप वापस नहीं आ सकता। "दो की टीम" का मतलब है वही वॉल्ट कोड और पासफ़्रेज़ अपने सहायक को देना।</p>
     <p><strong>कोई ट्रैकिंग नहीं:</strong> कोई एनालिटिक्स नहीं, कोई विज्ञापन नहीं, कोई कुकी नहीं।</p>
     <p><strong>डेटा हटाना:</strong> सेटिंग्स → "सारा डेटा हटाएँ" से सब कुछ तुरंत मिट जाता है।</p>
     <p><strong>संपर्क:</strong> sakredfamily@gmail.com</p>
