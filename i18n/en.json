@@ -181,5 +181,19 @@
   "pipeline_hint": "Leads move when you log an outcome: message sent → Contacted, Replied → Interested, Converted → Ordered.",
   "outcome_replied": "Replied",
   "outcome_no_reply": "No reply",
-  "snack_replied": "Noted · lead replied"
+  "snack_replied": "Noted · lead replied",
+  "stats_title": "Stats",
+  "stats_settings_sub": "Monthly orders, best tags, best source",
+  "stats_this_month": "Orders in {month}",
+  "stats_last_month": "Last month · {month}",
+  "stats_orders_count": "{count} orders",
+  "stats_week_followups": "Follow-ups this week",
+  "stats_week_detail": "{sent} sent · {replied} replies",
+  "stats_all_time": "All time",
+  "stats_all_time_detail": "{orders} orders from {leads} leads",
+  "stats_best_tags": "Best tags · by orders",
+  "stats_best_source": "Best source · conversion",
+  "stats_source_detail": "{orders} of {leads} leads ordered",
+  "stats_empty": "No orders yet. Mark a lead as Converted with its ₹ value and it shows here.",
+  "stats_footnote": "Counted from the leads on this phone only. Order value = what you typed when marking Converted."
 }

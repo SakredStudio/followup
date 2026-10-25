@@ -181,5 +181,19 @@
   "pipeline_hint": "नतीजा दर्ज करने पर लीड आगे बढ़ती है: मैसेज भेजा → संपर्क किया, जवाब आया → रुचि है, ऑर्डर → ऑर्डर मिला।",
   "outcome_replied": "जवाब आया",
   "outcome_no_reply": "जवाब नहीं",
-  "snack_replied": "नोट किया · लीड ने जवाब दिया"
+  "snack_replied": "नोट किया · लीड ने जवाब दिया",
+  "stats_title": "आँकड़े",
+  "stats_settings_sub": "महीने के ऑर्डर, बेहतरीन टैग, बेहतरीन सोर्स",
+  "stats_this_month": "{month} के ऑर्डर",
+  "stats_last_month": "पिछला महीना · {month}",
+  "stats_orders_count": "{count} ऑर्डर",
+  "stats_week_followups": "इस हफ़्ते के फ़ॉलो-अप",
+  "stats_week_detail": "{sent} भेजे · {replied} जवाब",
+  "stats_all_time": "अब तक",
+  "stats_all_time_detail": "{leads} लीड्स में से {orders} ऑर्डर",
+  "stats_best_tags": "बेहतरीन टैग · ऑर्डर के हिसाब से",
+  "stats_best_source": "बेहतरीन सोर्स · कन्वर्ज़न",
+  "stats_source_detail": "{leads} में से {orders} लीड्स ने ऑर्डर किया",
+  "stats_empty": "अभी कोई ऑर्डर नहीं। किसी लीड को ₹ मूल्य के साथ कन्वर्टेड मार्क करें, यहाँ दिखेगा।",
+  "stats_footnote": "सिर्फ़ इस फ़ोन की लीड्स से गिना गया। ऑर्डर मूल्य = कन्वर्टेड मार्क करते समय आपने जो लिखा।"
 }

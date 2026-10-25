@@ -31,6 +31,7 @@ import {
 } from './lib/channels.js';
 import { normalizePhone } from './lib/phone.js';
 import { STAGES, groupByStage, deriveStage } from './lib/pipeline.js';
+import { computeStats } from './lib/stats.js';
 import {
   canNotify,
   nextReminderAt,
@@ -427,6 +428,7 @@ function renderTodayScreen(lang) {
           <h1>${escapeHtml(t(lang, 'today_title'))}</h1>
           <div class="sub">${escapeHtml(formatHeaderDate(now, lang))}</div>
         </div>
+        <button type="button" class="btn icon flat" id="btn-today-stats" aria-label="${escapeHtml(t(lang, 'stats_title'))}">📈</button>
         <button type="button" class="btn icon flat" id="btn-today-search" aria-label="${escapeHtml(t(lang, 'search_placeholder'))}">🔍</button>
       </div>
 
@@ -623,6 +625,78 @@ function renderAllLeadsScreen(lang) {
   `;
 }
 
+function renderStatsScreen(lang) {
+  const now = Date.now();
+  const st = computeStats(appState, now);
+  const monthName = (offset) =>
+    new Date(new Date(now).getFullYear(), new Date(now).getMonth() + offset, 1).toLocaleDateString(lang === 'hi' ? 'hi-IN' : 'en-IN', { month: 'short' });
+  const sourceLabel = (src) => t(lang, src === 'whatsapp' ? 'source_whatsapp' : src === 'instagram' ? 'source_instagram' : 'source_other');
+  const maxTag = Math.max(1, ...st.tags.map((x) => x.orders));
+  return `
+    <div class="fub" data-screen="stats">
+      <div class="fub-bar">
+        <button type="button" class="btn icon flat" id="btn-stats-back" aria-label="${escapeHtml(t(lang, 'btn_back'))}">←</button>
+        <h1 style="flex:1;">${escapeHtml(t(lang, 'stats_title'))}</h1>
+      </div>
+      <div class="fub-content">
+        <div class="stat-grid">
+          <div class="stat-card hero">
+            <div class="k">${escapeHtml(t(lang, 'stats_this_month', { month: monthName(0) }))}</div>
+            <div class="v">${escapeHtml(formatINR(st.monthly.thisMonth.value))}</div>
+            <div class="s">${escapeHtml(t(lang, 'stats_orders_count', { count: st.monthly.thisMonth.orders }))}</div>
+          </div>
+          <div class="stat-card">
+            <div class="k">${escapeHtml(t(lang, 'stats_last_month', { month: monthName(-1) }))}</div>
+            <div class="v">${escapeHtml(formatINR(st.monthly.lastMonth.value))}</div>
+            <div class="s">${escapeHtml(t(lang, 'stats_orders_count', { count: st.monthly.lastMonth.orders }))}</div>
+          </div>
+          <div class="stat-card">
+            <div class="k">${escapeHtml(t(lang, 'stats_week_followups'))}</div>
+            <div class="v">${st.week.total}</div>
+            <div class="s">${escapeHtml(t(lang, 'stats_week_detail', { sent: st.week.contacted, replied: st.week.replied }))}</div>
+          </div>
+          <div class="stat-card">
+            <div class="k">${escapeHtml(t(lang, 'stats_all_time'))}</div>
+            <div class="v">${escapeHtml(formatINR(st.totals.value))}</div>
+            <div class="s">${escapeHtml(t(lang, 'stats_all_time_detail', { orders: st.totals.orders, leads: st.totals.leads }))}</div>
+          </div>
+        </div>
+
+        <div class="fub-section"><h2>${escapeHtml(t(lang, 'stats_best_tags'))}</h2></div>
+        ${
+          st.tags.length === 0
+            ? `<div class="stat-empty">${escapeHtml(t(lang, 'stats_empty'))}</div>`
+            : st.tags
+                .map(
+                  (tg) => `
+                    <div class="stat-row">
+                      <div class="stat-row-head"><span class="chip tag">${escapeHtml(tg.tag)}</span><span>${escapeHtml(t(lang, 'stats_orders_count', { count: tg.orders }))} · ${escapeHtml(formatINR(tg.value))}</span></div>
+                      <div class="bar"><span style="width:${Math.round((tg.orders / maxTag) * 100)}%"></span></div>
+                    </div>`
+                )
+                .join('')
+        }
+
+        <div class="fub-section"><h2>${escapeHtml(t(lang, 'stats_best_source'))}</h2></div>
+        ${
+          st.sources.length === 0
+            ? `<div class="stat-empty">${escapeHtml(t(lang, 'stats_empty'))}</div>`
+            : st.sources
+                .map(
+                  (s) => `
+                    <div class="stat-row">
+                      <div class="stat-row-head">${renderChannelChip(s.source, lang)}<span>${s.conversion}% · ${escapeHtml(t(lang, 'stats_source_detail', { orders: s.orders, leads: s.leads }))}</span></div>
+                      <div class="bar"><span style="width:${s.conversion}%"></span></div>
+                    </div>`
+                )
+                .join('')
+        }
+        <div style="font-size:12px; color:var(--fub-ink-3); text-align:center; margin:18px 0 80px;">${escapeHtml(t(lang, 'stats_footnote'))}</div>
+      </div>
+    </div>
+  `;
+}
+
 function renderSettingsScreen(lang) {
   const s = appState.settings;
   const archivedCount = appState.leads.filter((l) => Boolean(l.archived)).length;
@@ -669,6 +743,15 @@ function renderSettingsScreen(lang) {
           ${escapeHtml(t(lang, 'settings_group_followups'))}
         </div>
         <div class="settings-group">
+          <div class="setting" id="setting-row-stats" style="cursor:pointer;">
+            <div class="ico" style="background:var(--fub-emerald-soft); color:var(--fub-emerald-deep);">📈</div>
+            <div class="text">
+              <div class="t">${escapeHtml(t(lang, 'stats_title'))}</div>
+              <div class="s">${escapeHtml(t(lang, 'stats_settings_sub'))}</div>
+            </div>
+            <span style="color:var(--fub-ink-3);">›</span>
+          </div>
+
           <div class="setting" id="setting-row-delay" style="cursor:pointer;">
             <div class="ico">🕒</div>
             <div class="text">
@@ -1225,6 +1308,8 @@ export function renderApp() {
     mainScreenHtml = renderAllLeadsScreen(lang);
   } else if (uiState.screen === 'settings') {
     mainScreenHtml = renderSettingsScreen(lang);
+  } else if (uiState.screen === 'stats') {
+    mainScreenHtml = renderStatsScreen(lang);
   } else {
     mainScreenHtml = renderTodayScreen(lang);
   }
@@ -1292,6 +1377,23 @@ function bindEvents(lang) {
       renderApp();
       const sIn = document.querySelector('#input-all-search');
       if (sIn) sIn.focus();
+    });
+  }
+
+  const openStats = () => {
+    uiState.prevScreen = uiState.screen;
+    uiState.screen = 'stats';
+    renderApp();
+  };
+  const statsBtn = root.querySelector('#btn-today-stats');
+  if (statsBtn) statsBtn.addEventListener('click', openStats);
+  const rowStats = root.querySelector('#setting-row-stats');
+  if (rowStats) rowStats.addEventListener('click', openStats);
+  const statsBack = root.querySelector('#btn-stats-back');
+  if (statsBack) {
+    statsBack.addEventListener('click', () => {
+      uiState.screen = uiState.prevScreen && uiState.prevScreen !== 'stats' ? uiState.prevScreen : uiState.tab;
+      renderApp();
     });
   }
 
