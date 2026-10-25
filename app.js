@@ -32,6 +32,7 @@ import {
 import { normalizePhone } from './lib/phone.js';
 import { STAGES, groupByStage, deriveStage } from './lib/pipeline.js';
 import { computeStats } from './lib/stats.js';
+import { hasSharePayload, readSharePayload, parseSharedPayload } from './lib/share-target.js';
 import { MAX_TEMPLATES, buildMessageForLead, resolveTemplate, saveTemplate, deleteTemplate, assignTagTemplate } from './lib/templates.js';
 import {
   canNotify,
@@ -2267,6 +2268,27 @@ export async function initApp() {
   uiState.catchUp = computeCatchUpBanner(appState.leads, appState.settings, Date.now());
   appState = updateSettings(appState, { lastOpenedAt: Date.now() });
   uiState.screen = appState.settings.hasOnboarded ? 'today' : 'onboarding';
+  // Web Share Target: Android shared a contact / profile link / text into the app.
+  if (typeof window !== 'undefined' && hasSharePayload(window.location.search)) {
+    const parsed = parseSharedPayload(readSharePayload(window.location.search));
+    resetDraft();
+    uiState.draftName = parsed.name;
+    uiState.draftHandle = parsed.handle;
+    uiState.draftSource = parsed.source;
+    uiState.draftInterest = parsed.interest;
+    if (!appState.settings.hasOnboarded) {
+      appState = updateSettings(appState, { hasOnboarded: true });
+    }
+    uiState.screen = 'today';
+    uiState.addSheetOpen = canAddActiveLead(appState);
+    uiState.proSheetOpen = !uiState.addSheetOpen;
+    if (uiState.addSheetOpen) showSnack(t(appState.settings.language, 'snack_share_prefilled'));
+    try {
+      window.history.replaceState(null, '', window.location.pathname);
+    } catch {
+      /* ignore */
+    }
+  }
   renderApp();
   // Play Billing: only inside the Play-installed app. Entitlement follows the active subscription.
   try {

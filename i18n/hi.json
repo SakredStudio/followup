@@ -214,5 +214,6 @@
   "snack_template_saved": "टेम्पलेट सेव हुआ",
   "snack_template_invalid": "मैसेज खाली नहीं हो सकता (अधिकतम 300 अक्षर)",
   "btn_edit": "बदलें",
-  "btn_delete": "हटाएँ"
+  "btn_delete": "हटाएँ",
+  "snack_share_prefilled": "आपने जो शेयर किया उससे भर दिया — जाँचें और सेव करें"
 }

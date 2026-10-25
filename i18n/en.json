@@ -214,5 +214,6 @@
   "snack_template_saved": "Template saved",
   "snack_template_invalid": "Message cannot be empty (max 300 characters)",
   "btn_edit": "Edit",
-  "btn_delete": "Delete"
+  "btn_delete": "Delete",
+  "snack_share_prefilled": "Filled from what you shared — check and save"
 }
