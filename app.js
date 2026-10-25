@@ -49,6 +49,7 @@ import {
   canvasToPngBlob
 } from './lib/catalogue.js';
 import { importPhoto, getPhoto, deletePhoto, clearPhotos } from './lib/photos.js';
+import { mergeStates, lastTouchedBy } from './lib/merge.js';
 import {
 
   AUTO_SYNC_DEBOUNCE_MS,
@@ -361,6 +362,10 @@ export function renderLeadRow(lead, { showFollowUp = true, now = Date.now(), lan
           ${lead.priority ? '<span style="color:var(--fub-marigold); font-size:13px;" aria-label="Priority">★</span>' : ''}
         </div>
         <div class="lead-notes">${escapeHtml(lead.interest)}</div>
+        ${(() => {
+          const who = showFollowUp && appState && appState.settings.deviceName ? lastTouchedBy(lead.id, appState.events) : null;
+          return who ? `<div class="lead-by">👥 ${escapeHtml(t(lang, 'team_last_by', { who: who.by, when: relPastTime(who.at, now, lang) }))}</div>` : '';
+        })()}
         ${
           tags.length > 0
             ? `<div class="lead-tags">
@@ -998,11 +1003,15 @@ async function sendProductCard(lead, product, lang) {
   showSnack(t(lang, shared ? 'snack_card_shared' : 'snack_card_downloaded'));
 }
 
-/** Apply a decrypted remote state to this phone (v3-P2: replace; v3-P3 swaps in merge). */
+/** Merge a decrypted remote state into this phone: union of leads/events, newest lead wins. */
 function applyRemoteState(remoteState) {
-  const cloud = appState.settings.cloud;
-  const merged = migrate(remoteState);
-  appState = saveState({ ...merged, settings: { ...merged.settings, cloud, isPro: appState.settings.isPro, deviceName: appState.settings.deviceName } });
+  let remote;
+  try {
+    remote = migrate(remoteState);
+  } catch {
+    return;
+  }
+  appState = saveState(mergeStates(appState, remote));
 }
 
 async function cloudPush(key) {
@@ -1145,6 +1154,45 @@ function renderCloudScreen(lang) {
   `;
 }
 
+function renderTeamScreen(lang) {
+  const s = appState.settings;
+  const cloud = s.cloud;
+  return `
+    <div class="fub" data-screen="team">
+      <div class="fub-bar">
+        <button type="button" class="btn icon flat" id="btn-team-back" aria-label="${escapeHtml(t(lang, 'btn_back'))}">←</button>
+        <h1 style="flex:1;">${escapeHtml(t(lang, 'team_title'))}</h1>
+        <span class="chip pro">PRO</span>
+      </div>
+      <div class="fub-content">
+        <p style="font-size:13px; color:var(--fub-ink-2); margin:0 2px 12px; line-height:1.45;">${escapeHtml(t(lang, 'team_intro'))}</p>
+        <form id="form-device-name" class="tpl-card">
+          <div class="field" style="margin-bottom:8px;">
+            <label for="device-name-in">${escapeHtml(t(lang, 'team_device_name'))}</label>
+            <input id="device-name-in" type="text" maxlength="40" value="${escapeHtml(s.deviceName)}" placeholder="${escapeHtml(t(lang, 'team_device_placeholder'))}" />
+            <div class="hint">${escapeHtml(t(lang, 'team_device_name_hint'))}</div>
+          </div>
+          <button type="submit" class="btn primary sm">✓ ${escapeHtml(t(lang, 'btn_save'))}</button>
+        </form>
+        <div class="fub-section"><h2>${escapeHtml(t(lang, 'team_invite'))}</h2></div>
+        ${
+          cloud.vaultId
+            ? `<div class="tpl-card">
+                 <p style="font-size:13px; color:var(--fub-ink-2); margin:0 0 8px; line-height:1.45;">${escapeHtml(t(lang, 'team_invite_body'))}</p>
+                 <div style="font-family:var(--fub-mono); font-size:15px; margin:6px 0 10px; word-break:break-all;">${escapeHtml(formatVaultCode(cloud.vaultId))}</div>
+                 <button type="button" class="btn sm ghost" id="btn-team-copy">📋 ${escapeHtml(t(lang, 'cloud_copy_code'))}</button>
+               </div>`
+            : `<div class="tpl-card">
+                 <p style="font-size:13px; color:var(--fub-ink-2); margin:0 0 10px;">${escapeHtml(t(lang, 'team_no_vault'))}</p>
+                 <button type="button" class="btn sm primary" id="btn-team-open-cloud">☁️ ${escapeHtml(t(lang, 'cloud_title'))}</button>
+               </div>`
+        }
+        <div style="font-size:12px; color:var(--fub-ink-3); margin:12px 2px 80px;">${escapeHtml(t(lang, 'team_merge_rule'))}</div>
+      </div>
+    </div>
+  `;
+}
+
 function renderSettingsScreen(lang) {
   const s = appState.settings;
   const archivedCount = appState.leads.filter((l) => Boolean(l.archived)).length;
@@ -1214,6 +1262,15 @@ function renderSettingsScreen(lang) {
             <div class="text">
               <div class="t">${escapeHtml(t(lang, 'cloud_title'))} ${s.isPro ? '' : '<span class="chip pro" style="font-size:9px; padding:1px 5px;">PRO</span>'}</div>
               <div class="s">${escapeHtml(isCloudConfigured() ? t(lang, 'cloud_settings_sub') : t(lang, 'cloud_unavailable_title'))}</div>
+            </div>
+            <span style="color:var(--fub-ink-3);">›</span>
+          </div>
+
+          <div class="setting" id="setting-row-team" style="cursor:pointer;">
+            <div class="ico">👥</div>
+            <div class="text">
+              <div class="t">${escapeHtml(t(lang, 'team_title'))} ${s.isPro ? '' : '<span class="chip pro" style="font-size:9px; padding:1px 5px;">PRO</span>'}</div>
+              <div class="s">${escapeHtml(t(lang, 'team_settings_sub'))}</div>
             </div>
             <span style="color:var(--fub-ink-3);">›</span>
           </div>
@@ -1518,7 +1575,7 @@ function renderLeadDetailScreen(lang) {
                     <div class="dot ${i === 0 ? '' : 'muted'}"></div>
                     <div>
                       <div class="when">${escapeHtml(relPastTime(ev.createdAt, now, lang))} · ${escapeHtml(shortDate(ev.createdAt, lang))}</div>
-                      <div class="what">${escapeHtml(ev.body)}</div>
+                      <div class="what">${escapeHtml(ev.body)}${ev.by ? ` <span style="color:var(--fub-ink-3); font-size:11px;">· ${escapeHtml(ev.by)}</span>` : ''}</div>
                     </div>
                   </div>
                 `
@@ -1820,6 +1877,8 @@ export function renderApp() {
     mainScreenHtml = renderCatalogueScreen(lang);
   } else if (uiState.screen === 'cloud') {
     mainScreenHtml = renderCloudScreen(lang);
+  } else if (uiState.screen === 'team') {
+    mainScreenHtml = renderTeamScreen(lang);
   } else {
     mainScreenHtml = renderTodayScreen(lang);
   }
@@ -2053,6 +2112,53 @@ function bindEvents(lang) {
       renderApp();
     });
   });
+
+  // Team of two (v3, Pro)
+  const rowTeam = root.querySelector('#setting-row-team');
+  if (rowTeam) {
+    rowTeam.addEventListener('click', () => {
+      if (!appState.settings.isPro) {
+        uiState.proSheetOpen = true;
+        renderApp();
+        return;
+      }
+      uiState.screen = 'team';
+      renderApp();
+    });
+  }
+  const teamBack = root.querySelector('#btn-team-back');
+  if (teamBack) {
+    teamBack.addEventListener('click', () => {
+      uiState.screen = 'settings';
+      renderApp();
+    });
+  }
+  const deviceForm = root.querySelector('#form-device-name');
+  if (deviceForm) {
+    deviceForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const inp = root.querySelector('#device-name-in');
+      appState = updateSettings(appState, { deviceName: inp ? inp.value.trim() : '' });
+      showSnack(t(lang, 'snack_device_saved'));
+      renderApp();
+    });
+  }
+  const teamCopy = root.querySelector('#btn-team-copy');
+  if (teamCopy) {
+    teamCopy.addEventListener('click', async () => {
+      await copyTextToClipboard(formatVaultCode(appState.settings.cloud.vaultId));
+      showSnack(t(lang, 'snack_cloud_copied'));
+      renderApp();
+    });
+  }
+  const teamOpenCloud = root.querySelector('#btn-team-open-cloud');
+  if (teamOpenCloud) {
+    teamOpenCloud.addEventListener('click', () => {
+      uiState.cloudMode = null;
+      uiState.screen = 'cloud';
+      renderApp();
+    });
+  }
 
   // Cloud backup (v3, Pro)
   const rowCloud = root.querySelector('#setting-row-cloud');

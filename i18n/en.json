@@ -282,5 +282,17 @@
   "snack_cloud_failed": "Cloud sync failed — try again later",
   "snack_cloud_not_found": "No vault with that code",
   "snack_cloud_copied": "Vault code copied",
-  "snack_cloud_too_large": "Backup over 2 MB — remove some photos or leads"
+  "snack_cloud_too_large": "Backup over 2 MB — remove some photos or leads",
+  "team_title": "Team of two",
+  "team_settings_sub": "Share this list with one assistant through the vault",
+  "team_intro": "One vault, two phones. Your assistant opens Cloud backup on their phone, taps \"Restore / join\", and enters your vault code + passphrase. Both phones then sync through the same encrypted vault; every note and message records which phone did it.",
+  "team_device_name": "This phone's name",
+  "team_device_name_hint": "Shown on history entries, e.g. \"Anjali\" or \"Shop phone\"",
+  "team_device_placeholder": "e.g. Anjali's phone",
+  "team_invite": "Invite assistant",
+  "team_invite_body": "Give them the vault code below and tell them the passphrase in person — never over chat. Anyone with both can read and edit this list.",
+  "team_no_vault": "Create a vault in Cloud backup first.",
+  "team_last_by": "Last by {who} · {when}",
+  "team_merge_rule": "When both phones change the same lead, the newer change wins; notes from both phones are kept.",
+  "snack_device_saved": "Phone name saved"
 }
