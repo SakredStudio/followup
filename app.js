@@ -1,6 +1,7 @@
 // Kal Pakka — Main Application Controller (P0–P5: Onboarding, Today, AddLeadSheet, LeadDetail, AllLeadsScreen, Settings, PWA)
 import { registerTranslations, t, normalizeLang, LANG_LABELS } from './lib/i18n.js';
-import { isPlayBillingAvailable, getProPrices, activeProPlan, buyPro, MANAGE_SUBSCRIPTIONS_URL } from './lib/billing.js';
+import { isPlayBillingAvailable, getProPrices, activeProPlan, buyPro, subscriptionPatch, MANAGE_SUBSCRIPTIONS_URL } from './lib/billing.js';
+import { isReviewerCode } from './lib/reviewer.js';
 import { initials, avatarColor, relTime, relPastTime, shortDate, formatHeaderDate, inr as formatINR } from './lib/format.js';
 import {
   loadState,
@@ -23,6 +24,7 @@ import {
   migrate,
   exportLeadsCsv,
   seedSampleLeads,
+  hasPro,
   FREE_ACTIVE_LEAD_LIMIT
 } from './lib/store.js';
 import { categorize, filterLeads, computeCatchUpBanner, startOfDay } from './lib/categorize.js';
@@ -472,7 +474,7 @@ function renderTodayScreen(lang) {
   const activeCount = getActiveLeadCount(appState);
   const firstName = String(appState.settings.sellerName || '').trim().split(/\s+/)[0];
   const isEmpty = overdue.length === 0 && today.length === 0 && upcoming.length === 0;
-  const showProCard = !appState.settings.isPro && activeCount / FREE_ACTIVE_LEAD_LIMIT >= 0.8;
+  const showProCard = !hasPro(appState.settings) && activeCount / FREE_ACTIVE_LEAD_LIMIT >= 0.8;
 
   return `
     <div class="fub" data-screen="today">
@@ -874,7 +876,7 @@ function renderCatalogueScreen(lang) {
       <div class="fub-bar">
         <button type="button" class="btn icon flat" id="btn-catalogue-back" aria-label="${escapeHtml(t(lang, 'btn_back'))}">←</button>
         <h1 style="flex:1;">${escapeHtml(t(lang, 'catalogue_title'))}</h1>
-        <span class="chip ${s.isPro ? 'pro' : ''}">${list.length} / ${limit}</span>
+        <span class="chip ${hasPro(s) ? 'pro' : ''}">${list.length} / ${limit}</span>
       </div>
       <div class="fub-content">
         <p style="font-size:13px; color:var(--fub-ink-2); margin:0 2px 12px; line-height:1.45;">${escapeHtml(t(lang, 'catalogue_intro'))}</p>
@@ -896,9 +898,9 @@ function renderCatalogueScreen(lang) {
           list.length < limit
             ? `<button type="button" class="btn ghost block" id="btn-new-product" style="margin:4px 0 16px;">+ ${escapeHtml(t(lang, 'catalogue_add'))}</button>`
             : `<div style="font-size:12px; color:var(--fub-ink-3); margin:4px 2px 16px;">${escapeHtml(
-                s.isPro ? t(lang, 'catalogue_limit_pro', { max: limit }) : t(lang, 'catalogue_limit_free', { max: limit })
+                hasPro(s) ? t(lang, 'catalogue_limit_pro', { max: limit }) : t(lang, 'catalogue_limit_free', { max: limit })
               )}</div>
-              ${s.isPro ? '' : `<button type="button" class="btn primary block" id="btn-catalogue-upsell" style="margin-bottom:16px;">✨ ${escapeHtml(t(lang, 'pro_card_settings_cta'))}</button>`}`
+              ${hasPro(s) ? '' : `<button type="button" class="btn primary block" id="btn-catalogue-upsell" style="margin-bottom:16px;">✨ ${escapeHtml(t(lang, 'pro_card_settings_cta'))}</button>`}`
         }
         <div style="font-size:12px; color:var(--fub-ink-3); text-align:center; margin:12px 0 80px;">${escapeHtml(t(lang, 'catalogue_privacy_note'))}</div>
       </div>
@@ -1219,7 +1221,7 @@ function renderSettingsScreen(lang) {
       <div class="fub-bar">
         <h1 style="flex:1;">${escapeHtml(t(lang, 'settings_title'))}</h1>
         ${
-          s.isPro
+          hasPro(s)
             ? `<span class="chip pro">✨ PRO</span>`
             : ''
         }
@@ -1227,13 +1229,14 @@ function renderSettingsScreen(lang) {
 
       <div class="fub-content">
         ${
-          !s.isPro
+          !hasPro(s)
             ? `<div class="pro-card" style="margin-bottom:18px;">
                  <h3>${escapeHtml(t(lang, 'pro_card_settings_title'))}</h3>
                  <p>${escapeHtml(t(lang, 'pro_card_settings_body'))}</p>
                  <button type="button" class="btn sm" id="btn-settings-upgrade-pro">
                    ✨ ${escapeHtml(t(lang, 'pro_card_settings_cta'))}
                  </button>
+                 <div><button type="button" class="reviewer-link" data-reviewer-code>${escapeHtml(t(lang, 'reviewer_code_link'))}</button></div>
                </div>`
             : ''
         }
@@ -1286,7 +1289,7 @@ function renderSettingsScreen(lang) {
           <div class="setting" id="setting-row-cloud" style="cursor:pointer;">
             <div class="ico cobalt">☁️</div>
             <div class="text">
-              <div class="t">${escapeHtml(t(lang, 'cloud_title'))} ${s.isPro ? '' : '<span class="chip pro" style="font-size:9px; padding:1px 5px;">PRO</span>'}</div>
+              <div class="t">${escapeHtml(t(lang, 'cloud_title'))} ${hasPro(s) ? '' : '<span class="chip pro" style="font-size:9px; padding:1px 5px;">PRO</span>'}</div>
               <div class="s">${escapeHtml(isCloudConfigured() ? t(lang, 'cloud_settings_sub') : t(lang, 'cloud_unavailable_title'))}</div>
             </div>
             <span style="color:var(--fub-ink-3);">›</span>
@@ -1295,7 +1298,7 @@ function renderSettingsScreen(lang) {
           <div class="setting" id="setting-row-team" style="cursor:pointer;">
             <div class="ico">👥</div>
             <div class="text">
-              <div class="t">${escapeHtml(t(lang, 'team_title'))} ${s.isPro ? '' : '<span class="chip pro" style="font-size:9px; padding:1px 5px;">PRO</span>'}</div>
+              <div class="t">${escapeHtml(t(lang, 'team_title'))} ${hasPro(s) ? '' : '<span class="chip pro" style="font-size:9px; padding:1px 5px;">PRO</span>'}</div>
               <div class="s">${escapeHtml(t(lang, 'team_settings_sub'))}</div>
             </div>
             <span style="color:var(--fub-ink-3);">›</span>
@@ -1304,7 +1307,7 @@ function renderSettingsScreen(lang) {
           <div class="setting" id="setting-row-templates" style="cursor:pointer;">
             <div class="ico cobalt">✉️</div>
             <div class="text">
-              <div class="t">${escapeHtml(t(lang, 'templates_title'))} ${s.isPro ? '' : '<span class="chip pro" style="font-size:9px; padding:1px 5px;">PRO</span>'}</div>
+              <div class="t">${escapeHtml(t(lang, 'templates_title'))} ${hasPro(s) ? '' : '<span class="chip pro" style="font-size:9px; padding:1px 5px;">PRO</span>'}</div>
               <div class="s">${escapeHtml(t(lang, 'templates_settings_sub', { count: (s.templates || []).length }))}</div>
             </div>
             <span style="color:var(--fub-ink-3);">›</span>
@@ -1446,7 +1449,7 @@ function renderBackupSheet(lang) {
           <input type="file" id="input-import-json" accept="application/json,.json" style="display:none;" />
         </label>
         <button type="button" class="btn ghost block" id="btn-export-csv">
-          📊 ${escapeHtml(t(lang, 'backup_export_csv'))} ${appState.settings.isPro ? '' : '🔒 PRO'}
+          📊 ${escapeHtml(t(lang, 'backup_export_csv'))} ${hasPro(appState.settings) ? '' : '🔒 PRO'}
         </button>
         <button type="button" class="btn flat block" id="btn-close-backup-sheet">
           ${escapeHtml(t(lang, 'btn_cancel'))}
@@ -1821,6 +1824,10 @@ function renderProUpsellSheet(lang) {
   const notice = uiState.billingNotice
     ? `<p style="font-weight:700; margin:0 0 10px;">${escapeHtml(uiState.billingNotice)}</p>`
     : '';
+  // Reviewer access (lib/reviewer.js) is separate from the subscription: the plans stay visible under it.
+  const reviewer = appState.settings.reviewerAccess
+    ? `<p style="font-size:12px; margin:10px 0 0;">${escapeHtml(t(lang, 'reviewer_unlocked'))}</p>`
+    : `<button type="button" class="reviewer-link" data-reviewer-code ${busy}>${escapeHtml(t(lang, 'reviewer_code_link'))}</button>`;
   let body;
   if (appState.settings.isPro) {
     body = `
@@ -1851,6 +1858,7 @@ function renderProUpsellSheet(lang) {
             ${escapeHtml(t(lang, 'btn_close'))}
           </button>
         </div>
+        ${appState.settings.isPro ? '' : `<div>${reviewer}</div>`}
       </div>
     </div>
   `;
@@ -2180,7 +2188,7 @@ function bindEvents(lang) {
   const rowTeam = root.querySelector('#setting-row-team');
   if (rowTeam) {
     rowTeam.addEventListener('click', () => {
-      if (!appState.settings.isPro) {
+      if (!hasPro(appState.settings)) {
         uiState.proSheetOpen = true;
         renderApp();
         return;
@@ -2227,7 +2235,7 @@ function bindEvents(lang) {
   const rowCloud = root.querySelector('#setting-row-cloud');
   if (rowCloud) {
     rowCloud.addEventListener('click', () => {
-      if (!appState.settings.isPro) {
+      if (!hasPro(appState.settings)) {
         uiState.proSheetOpen = true;
         renderApp();
         return;
@@ -2369,7 +2377,7 @@ function bindEvents(lang) {
   const rowTemplates = root.querySelector('#setting-row-templates');
   if (rowTemplates) {
     rowTemplates.addEventListener('click', () => {
-      if (!appState.settings.isPro) {
+      if (!hasPro(appState.settings)) {
         uiState.proSheetOpen = true;
         renderApp();
         return;
@@ -2505,7 +2513,7 @@ function bindEvents(lang) {
   const tagProFilterBtn = root.querySelector('#btn-tag-pro-filter');
   if (tagProFilterBtn) {
     tagProFilterBtn.addEventListener('click', () => {
-      if (!appState.settings.isPro) {
+      if (!hasPro(appState.settings)) {
         uiState.proSheetOpen = true;
         renderApp();
         return;
@@ -3149,6 +3157,26 @@ function bindEvents(lang) {
     });
   }
 
+  // Reviewer access code (Play reviewers cannot buy): hash-checked on device, unlocks Pro here only.
+  root.querySelectorAll('[data-reviewer-code]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const entered = String(window.prompt(t(lang, 'reviewer_code_prompt')) || '').trim();
+      if (!entered) return;
+      let ok = false;
+      try {
+        ok = await isReviewerCode(entered);
+      } catch {
+        ok = false;
+      }
+      if (ok) {
+        appState = updateSettings(appState, { reviewerAccess: true });
+        uiState.billingNotice = '';
+      }
+      showSnack(t(lang, ok ? 'reviewer_unlocked' : 'reviewer_code_wrong'));
+      renderApp();
+    });
+  });
+
   const closeProBtn = root.querySelector('#btn-close-pro-sheet');
   if (closeProBtn) {
     closeProBtn.addEventListener('click', () => {
@@ -3192,9 +3220,10 @@ export async function initApp() {
     if (uiState.billingAvailable) {
       const [prices, plan] = await Promise.all([getProPrices(), activeProPlan()]);
       uiState.proPrices = prices;
-      const isPro = plan !== null;
-      if (isPro !== Boolean(appState.settings.isPro)) {
-        appState = updateSettings(appState, { isPro, proPlan: plan });
+      // Subscription entitlement only; reviewer access (settings.reviewerAccess) is never cleared here.
+      const patch = subscriptionPatch(appState.settings, plan);
+      if (patch) {
+        appState = updateSettings(appState, patch);
         renderApp();
       }
     }

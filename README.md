@@ -49,7 +49,8 @@ WhatsApp Business API automation, reading chats, bulk messaging, ads, lead buyin
 - `leads[]`: `id, name, handle, source, interest, status (new|active|converted|not_interested|lost), stage (new|contacted|interested|ordered|lost), priority, tags[], createdAt, nextFollowUpAt, lastContactedAt, updatedAt, archived?, convertedAt?, convertedValue?`
 - `events[]`: `id, leadId, at, kind (note|contacted|replied|status_change|follow_up_set), text, by?`
 - `tags[]`, `catalogue[]` (`id, name, price, photoId, updatedAt`, max 10)
-- `settings`: profile (`sellerName, sellerHandle, sellerBusiness, sellerPhone`), `language (en|hi|hinglish)`, reminders (`reminderEnabled, reminderHour, quietHours{start,end}`), `templates[]` (max 3), `tagTemplates{}`, `deviceName`, `cloud{vaultId, salt, keyB64, autoSync, lastSyncAt}`, `isPro`, theme/density.
+- `settings`: profile (`sellerName, sellerHandle, sellerBusiness, sellerPhone`), `language (en|hi|hinglish)`, reminders (`reminderEnabled, reminderHour, quietHours{start,end}`), `templates[]` (max 3), `tagTemplates{}`, `deviceName`, `cloud{vaultId, salt, keyB64, autoSync, lastSyncAt}`, `isPro` (Play subscription entitlement), `reviewerAccess` (device-local reviewer unlock, see below), theme/density.
+- Pro check: `hasPro(settings)` in `lib/store.js` = `isPro || reviewerAccess`; every Pro gate goes through it. Reviewer access code (`lib/reviewer.js`): Play reviewers cannot buy, so "Have a reviewer code?" on the Pro card / Pro sheet asks for a code, hashes it (SHA-256, Web Crypto) and compares with `REVIEWER_CODE_SHA256`. Only the hash is in the repo; the plain code goes in the Play Console "App access" notes, never here. `reviewerAccess` is not cleared by a billing sync, is left out of backups / the cloud vault, and is not taken from a restored backup or a team merge.
 
 ## Running & Testing Locally
 ```bash
@@ -70,4 +71,4 @@ Live at https://followup.sakredstudio.ca/. The public repo `SakredStudio/followu
 git subtree push --prefix=projects/followup-buddy/app https://github.com/SakredStudio/followup.git main
 ```
 
-The workflow in `.github/workflows/deploy.yml` runs the tests and publishes the folder. Bump `CACHE_NAME` in `sw.js` first (currently `followup-buddy-v7`; the prefix keeps the old name on purpose) and keep every new file in `PRECACHE_ASSETS` (the acceptance test checks it).
+The workflow in `.github/workflows/deploy.yml` runs the tests and publishes the folder. Bump `CACHE_NAME` in `sw.js` first (currently `followup-buddy-v8`; the prefix keeps the old name on purpose) and keep every new file in `PRECACHE_ASSETS` (the acceptance test checks it).

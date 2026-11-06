@@ -511,6 +511,19 @@ button, input, select, textarea, a.tap-target {
 .pro-card h3 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
 .pro-card p { margin: 6px 0 14px; font-size: 13px; opacity: .88; line-height: 1.4; }
 .pro-card .btn { background: #fff; color: #1e3563; }
+.pro-card .reviewer-link {
+  position: relative;
+  z-index: 1;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin-top: 6px;
+  color: #fff;
+  opacity: .8;
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
 
 /* Forms, Segmented, Chips, Sheets, Snackbar */
 .field { margin-bottom: 14px; }
