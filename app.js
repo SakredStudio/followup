@@ -1,4 +1,4 @@
-// FollowUp Buddy — Main Application Controller (P0–P5: Onboarding, Today, AddLeadSheet, LeadDetail, AllLeadsScreen, Settings, PWA)
+// Kal Pakka — Main Application Controller (P0–P5: Onboarding, Today, AddLeadSheet, LeadDetail, AllLeadsScreen, Settings, PWA)
 import { registerTranslations, t, normalizeLang, LANG_LABELS } from './lib/i18n.js';
 import { isPlayBillingAvailable, getProPrices, activeProPlan, buyPro, MANAGE_SUBSCRIPTIONS_URL } from './lib/billing.js';
 import { initials, avatarColor, relTime, relPastTime, shortDate, formatHeaderDate, inr as formatINR } from './lib/format.js';
@@ -2656,7 +2656,7 @@ function bindEvents(lang) {
   if (exportJsonBtn) {
     exportJsonBtn.addEventListener('click', () => {
       const json = exportBackupJson(appState);
-      triggerFileDownload('followup-buddy-backup.json', json, 'application/json');
+      triggerFileDownload('kal-pakka-backup.json', json, 'application/json');
       uiState.backupSheetOpen = false;
       showSnack(t(lang, 'snack_backup_downloaded'));
       renderApp();
@@ -2686,7 +2686,7 @@ function bindEvents(lang) {
     exportCsvBtn.addEventListener('click', () => {
       try {
         const csv = exportLeadsCsv(appState);
-        triggerFileDownload('followup-buddy-leads.csv', csv, 'text/csv;charset=utf-8');
+        triggerFileDownload('kal-pakka-leads.csv', csv, 'text/csv;charset=utf-8');
         uiState.backupSheetOpen = false;
         showSnack(t(lang, 'snack_csv_exported'));
         renderApp();
@@ -3220,6 +3220,6 @@ export async function initApp() {
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {
   window.addEventListener('DOMContentLoaded', () => {
-    initApp().catch((err) => console.error('FollowUp Buddy init failed:', err));
+    initApp().catch((err) => console.error('Kal Pakka init failed:', err));
   });
 }

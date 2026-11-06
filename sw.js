@@ -1,5 +1,5 @@
 // Cache-first shell: installed phones only pick up a new release when this name changes. BUMP ON EVERY DEPLOY.
-const CACHE_NAME = 'followup-buddy-v6';
+const CACHE_NAME = 'followup-buddy-v7';
 
 const PRECACHE_ASSETS = [
   './',

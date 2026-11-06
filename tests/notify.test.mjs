@@ -63,7 +63,7 @@ test('notify: digest snapshot + text builder in three languages', () => {
 
 test('notify: self digest text lists today and overdue leads', () => {
   const txt = buildSelfDigestText({ today: leads(2), overdue: leads(1, 'O') }, 'en', new Date(2026, 9, 25));
-  assert.ok(txt.startsWith('FollowUp Buddy ·'));
+  assert.ok(txt.startsWith('Kal Pakka ·'));
   assert.ok(txt.includes('Today (2)'));
   assert.ok(txt.includes('• L1 Kumar — item 1'));
   assert.ok(txt.includes('Overdue (1)'));

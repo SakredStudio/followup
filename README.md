@@ -1,6 +1,8 @@
-# FollowUp Buddy — Offline-First WhatsApp & Instagram Lead Tracker
+# Kal Pakka — Offline-First WhatsApp & Instagram Lead Tracker
 
-**FollowUp Buddy** (`com.sakredstudio.followupbuddy`) is a 100% offline-first personal lead follow-up organizer built for Indian solo sellers (home bakers, saree & boutique sellers, tiffin services, coaches, freelancers) who close sales on WhatsApp and Instagram DMs.
+**Kal Pakka** (`com.sakredstudio.followupbuddy`) is a 100% offline-first personal lead follow-up organizer built for Indian solo sellers (home bakers, saree & boutique sellers, tiffin services, coaches, freelancers) who close sales on WhatsApp and Instagram DMs.
+
+Renamed from **FollowUp Buddy** on 2026-11-04 ("kal pakka" = "tomorrow, for sure": the promise a lead makes before going quiet). Only the display name and icons changed. The host `followup.sakredstudio.ca`, the package id, the `fub.*` storage keys, the `fub_pro_*` Play product ids and the `followup-vault` worker keep their old names so existing installs and data carry over.
 
 Hard rule, every version: the app **never sends a message for you, never reads your chats, never automates WhatsApp or Instagram.** It opens the chat with your message pre-typed; you press Send.
 
@@ -12,7 +14,7 @@ Vanilla JS PWA, no build step, no dependencies, ES modules, `node --test`. Every
 - **Today Screen**: Emerald hero card with today's follow-up count, Overdue & Upcoming (next 7 days) buckets, priority star (`★`) sorting, and missed-days catch-up banner.
 - **Quick Add Lead**: Save a lead in under 10 seconds with 3-way Source segmented control (`WhatsApp / Instagram / Other`), 1-tap delay chips (`Tomorrow / 2d / 1w / 1m`), tags, and priority star.
 - **Lead Detail & 1-Tap Deep Links**:
-  - **WhatsApp**: Opens `https://wa.me/91XXXXXXXXXX?text=...` with a pre-filled follow-up message (80-char interest truncation + `— sent with FollowUp Buddy · https://followup.sakredstudio.ca`).
+  - **WhatsApp**: Opens `https://wa.me/91XXXXXXXXXX?text=...` with a pre-filled follow-up message (80-char interest truncation + `— sent with Kal Pakka · https://followup.sakredstudio.ca`).
   - **Instagram**: Copies the follow-up message to clipboard and opens `https://instagram.com/<handle>`.
   - **History Timeline**: `created`, `contacted`, `replied`, `rescheduled`, `status_change` and custom `note` events (`contacted` / `replied` / `note` touch `lastContactedAt`).
   - **Outcomes**: `Replied`, `No reply`, `Converted` (with optional ₹ order value), `Not interested`, `Lost`.
@@ -68,4 +70,4 @@ Live at https://followup.sakredstudio.ca/. The public repo `SakredStudio/followu
 git subtree push --prefix=projects/followup-buddy/app https://github.com/SakredStudio/followup.git main
 ```
 
-The workflow in `.github/workflows/deploy.yml` runs the tests and publishes the folder. Bump `CACHE_NAME` in `sw.js` first (currently `followup-buddy-v3`) and keep every new file in `PRECACHE_ASSETS` (the acceptance test checks it).
+The workflow in `.github/workflows/deploy.yml` runs the tests and publishes the folder. Bump `CACHE_NAME` in `sw.js` first (currently `followup-buddy-v7`; the prefix keeps the old name on purpose) and keep every new file in `PRECACHE_ASSETS` (the acceptance test checks it).
